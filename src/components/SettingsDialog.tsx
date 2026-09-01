@@ -29,6 +29,7 @@ import {
   AlertTriangle,
   Fingerprint,
   Ghost,
+  Globe,
   HardDriveDownload,
   Loader2,
   LogOut,
@@ -113,6 +114,9 @@ export function SettingsDialog({
             <TabsTrigger value="keys" className="flex-1 gap-1.5">
               <Fingerprint className="size-3.5" /> Keys
             </TabsTrigger>
+            <TabsTrigger value="vpn" className="flex-1 gap-1.5">
+              <Globe className="size-3.5" /> GhostVPN
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="profile">
             <ProfileTab />
@@ -125,6 +129,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="keys">
             <VerifyKeysTab myHandle={handle} myPublicKeyJwk={publicKeyJwk} />
+          </TabsContent>
+          <TabsContent value="vpn">
+            <GhostVpnTab />
           </TabsContent>
         </Tabs>
       </DialogContent>

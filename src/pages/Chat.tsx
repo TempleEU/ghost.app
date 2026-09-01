@@ -35,7 +35,7 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { publicKeyFingerprint } from "@/lib/crypto";
-import { ArrowLeft, Ghost, Lock, Loader2, Send, Settings, Timer, UserPlus } from "lucide-react";
+import { ArrowLeft, Ghost, Lock, Loader2, MoreVertical, Send, Settings, ShieldAlert, Timer, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Identity = { userId: string; handle: string; publicKeyJwk: string };
@@ -602,6 +602,9 @@ function ChatView({
         <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
           <Lock className="size-3" /> end-to-end encrypted
         </span>
+        {other && (
+          <MessageActionsMenu other={other} />
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -613,6 +616,9 @@ function ChatView({
         {messages?.map((m) => {
           const mine = m.senderId === me.userId;
           const body = plaintexts.get(m._id) ?? "…";
+          const parent = m.replyToId
+            ? messages.find((p) => p._id === m.replyToId)
+            : null;
           return (
             <div key={m._id} className={`mb-2 flex ${mine ? "justify-end" : "justify-start"}`}>
               <div
@@ -622,15 +628,63 @@ function ChatView({
                     : "rounded-bl-sm bg-muted text-foreground"
                 }`}
               >
+                {parent && (
+                  <div
+                    className={`mb-1.5 border-l-2 pl-2 text-[11px] opacity-70 ${
+                      mine ? "border-primary-foreground/40" : "border-foreground/30"
+                    }`}
+                  >
+                    <span className="font-medium">{memberHandle(parent.senderId)}</span>
+                    <span className="opacity-80">: {plaintexts.get(parent._id) ?? "…"}</span>
+                  </div>
+                )}
                 <p className="whitespace-pre-wrap break-words">{body}</p>
-                <p
+                {(m.reactions) && Object.keys(m.reactions).length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {Object.entries(m.reactions).map(([emoji, userIds]) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => toggleReaction({ messageId: m._id, emoji })}
+                        className={`rounded-full border px-1.5 py-0.5 text-[11px] transition-colors ${
+                          userIds.includes(me.userId)
+                            ? "border-primary/60 bg-primary/10"
+                            : "border-border/60 hover:bg-accent/40"
+                        }`}
+                        title={userIds.map((id) => memberHandle(id)).join(", ")}
+                      >
+                        {emoji} {userIds.length}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div
                   className={`mt-1 flex items-center gap-1 text-[10px] ${
                     mine ? "text-primary-foreground/60" : "text-muted-foreground"
                   }`}
                 >
                   {timeAgo(m.createdAt)}
                   {m.expiresAt && <Timer className="size-3" />}
-                </p>
+                  <button
+                    type="button"
+                    className="opacity-0 transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100"
+                    onClick={() => setReplyTo(m)}
+                    title="Reply"
+                  >
+                    ↩
+                  </button>
+                  {['👍', '❤️', '😂', '😮', '😢'].map((e) => (
+                    <button
+                      key={e}
+                      type="button"
+                      className="opacity-0 transition-opacity hover:opacity-100 focus:opacity-100"
+                      onClick={() => toggleReaction({ messageId: m._id, emoji: e })}
+                      title={`React ${e}`}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           );
@@ -638,6 +692,19 @@ function ChatView({
         <div ref={bottomRef} />
       </div>
 
+      {replyTo && (
+        <div className="flex items-center gap-2 border-t border-border/40 bg-muted/40 px-4 py-1.5 text-xs">
+          <span className="text-muted-foreground">
+            ↩ Replying to <span className="font-medium">{memberHandle(replyTo.senderId)}</span>
+          </span>
+          <span className="flex-1 truncate text-muted-foreground/70">
+            {plaintexts.get(replyTo._id) ?? "…"}
+          </span>
+          <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setReplyTo(null)}>
+            ✕
+          </button>
+        </div>
+      )}
       <footer className="flex items-center gap-2 border-t border-border/60 px-4 py-3">
         <Select value={disappearing} onValueChange={setDisappearing}>
           <SelectTrigger className="w-[130px]" size="sm">
@@ -764,6 +831,104 @@ function NewConversationDialog({
             Start chatting
           </Button>
         </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Message actions — block & report (privacy & safety)
+// ---------------------------------------------------------------------------
+
+function MessageActionsMenu({ other }: { other: Member }) {
+  const [open, setOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string | null>(null);
+  const block = useMutation(api.chat.blockHandle);
+  const report = useMutation(api.chat.reportHandle);
+
+  const handleBlock = async () => {
+    setBusy(true);
+    try {
+      await block({ handle: other.handle });
+      setDone("blocked");
+      setOpen(false);
+    } catch (e) {
+      setDone(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleReport = async () => {
+    if (!reason.trim()) return;
+    setBusy(true);
+    try {
+      await report({ handle: other.handle, reason: reason.trim() });
+      setDone("reported");
+      setReporting(false);
+      setReason("");
+      setOpen(false);
+    } catch (e) {
+      setDone(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" title="Block / report">
+          <MoreVertical className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm">
+        {reporting ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>Report {other.handle}</DialogTitle>
+              <DialogDescription>
+                Tell us what is wrong. The report is stored server-side; the
+                message content stays encrypted.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Reason (spam, harassment…)"
+            />
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setReporting(false)}>
+                Back
+              </Button>
+              <Button onClick={handleReport} disabled={busy || !reason.trim()}>
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldAlert className="size-4" />}
+                Send report
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{other.handle}</DialogTitle>
+              <DialogDescription>
+                Privacy &amp; safety actions for this contact.
+              </DialogDescription>
+            </DialogHeader>
+            {done && <p className="text-sm text-muted-foreground">{done}.</p>}
+            <DialogFooter className="flex-col gap-2">
+              <Button variant="destructive" className="w-full" onClick={handleBlock} disabled={busy}>
+                <ShieldAlert className="size-4" /> Block {other.handle}
+              </Button>
+              <Button variant="outline" className="w-full" onClick={() => setReporting(true)} disabled={busy}>
+                Report {other.handle}
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
