@@ -36,20 +36,42 @@ export async function generateIdentity(): Promise<{
   );
   const pub = await crypto.subtle.exportKey("jwk", pair.publicKey);
   const priv = await crypto.subtle.exportKey("jwk", pair.privateKey);
-  return { publicKeyJwk: JSON.stringify(pub), privateKeyJwk: JSON.stringify(priv) };
+  return {
+    publicKeyJwk: JSON.stringify(pub),
+    privateKeyJwk: JSON.stringify(priv),
+  };
 }
 
-async function deriveSharedBits(privJwk: string, peerPubJwk: string): Promise<ArrayBuffer> {
-  const priv = await crypto.subtle.importKey("jwk", JSON.parse(privJwk), { name: "ECDH", namedCurve: EC }, true, ["deriveBits"]);
-  const peer = await crypto.subtle.importKey("jwk", JSON.parse(peerPubJwk), { name: "ECDH", namedCurve: EC }, true, []);
-  return crypto.subtle.deriveBits({ name: "ECDH", public: peer }, priv, DERIVED_BITS);
+async function deriveSharedBits(
+  myPrivateJwk: string,
+  peerPublicJwk: string,
+): Promise<ArrayBuffer> {
+  const priv = await crypto.subtle.importKey(
+    "jwk",
+    JSON.parse(myPrivateJwk),
+    { name: "ECDH", namedCurve: EC },
+    true,
+    ["deriveBits"],
+  );
+  const peer = await crypto.subtle.importKey(
+    "jwk",
+    JSON.parse(peerPubJwk),
+    { name: "ECDH", namedCurve: EC },
+    true,
+    [],
+  );
+  return crypto.subtle.deriveBits(
+    { name: "ECDH", public: peer },
+    priv,
+    DERIVED_BITS,
+  );
 }
 
 async function kekFromBits(bits: ArrayBuffer): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", bits, AES, false, ["encrypt", "decrypt"]);
 }
 
-/** Wrap the raw conversation key for a specific member. */
+/** Wrap the raw conversation key for a specific member (ECDH-derived KEK). */
 export async function wrapConversationKey(
   rawKey: ArrayBuffer,
   myPrivateJwk: string,
@@ -71,14 +93,30 @@ export async function unwrapConversationKey(
 ): Promise<CryptoKey> {
   const bits = await deriveSharedBits(myPrivateJwk, peerPublicJwk);
   const kek = await kekFromBits(bits);
-  const raw = await crypto.subtle.decrypt({ name: AES, iv: unb64(ivB64) }, kek, unb64(wrappedB64));
-  return crypto.subtle.importKey("raw", raw, { name: AES }, false, ["encrypt", "decrypt"]);
+  const raw = await crypto.subtle.decrypt(
+    { name: AES, iv: unb64(ivB64) },
+    kek,
+    unb64(wrappedB64),
+  );
+  return crypto.subtle.importKey("raw", raw, { name: AES }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
 }
 
 // ----------------------------------------------------------- private key at rest
 
-async function passphraseKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
-  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+async function passphraseKey(
+  passphrase: string,
+  salt: Uint8Array,
+): Promise<CryptoKey> {
+  const base = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(passphrase),
+    "PBKDF2",
+    false,
+    ["deriveKey"],
+  );
   return crypto.subtle.deriveKey(
     { name: "PBKDF2", salt, iterations: 310_000, hash: "SHA-256" },
     base,
@@ -90,7 +128,10 @@ async function passphraseKey(passphrase: string, salt: Uint8Array): Promise<Cryp
 
 const STORE_KEY = "ghostchat.identity.v1";
 
-export async function saveIdentity(passphrase: string, identity: { privateKeyJwk: string }): Promise<void> {
+export async function saveIdentity(
+  passphrase: string,
+  identity: { privateKeyJwk: string },
+): Promise<void> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const kek = await passphraseKey(passphrase, salt);
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -110,22 +151,25 @@ export async function saveIdentity(passphrase: string, identity: { privateKeyJwk
   );
 }
 
+/** Returns the unwrapped private key JWK, or null if the passphrase is wrong. */
 export async function loadIdentity(passphrase: string): Promise<string | null> {
   const raw = localStorage.getItem(STORE_KEY);
   if (!raw) return null;
   try {
-    const { salt, iv, wrapped } = JSON.parse(raw) as {
-      salt: string; iv: string; wrapped: string;
+    const parsed = JSON.parse(raw) as {
+      salt: string;
+      iv: string;
+      wrapped: string;
     };
-    const kek = await passphraseKey(passphrase, unb64(salt));
+    const kek = await passphraseKey(passphrase, unb64(parsed.salt));
     const plain = await crypto.subtle.decrypt(
-      { name: AES, iv: unb64(iv) },
+      { name: AES, iv: unb64(parsed.iv) },
       kek,
-      unb64(wrapped),
+      unb64(parsed.wrapped),
     );
     return new TextDecoder().decode(plain);
   } catch {
-    return null; // wrong passphrase
+    return null;
   }
 }
 
@@ -135,9 +179,19 @@ export function hasStoredIdentity(): boolean {
 
 // ----------------------------------------------------------- message crypto
 
-/** Import the raw conversation key bytes for AES-GCM use. */
-export async function importConversationKey(raw: ArrayBuffer): Promise<CryptoKey> {
-  return crypto.subtle.importKey("raw", raw, { name: AES }, false, ["encrypt", "decrypt"]);
+/** Generate a fresh 256-bit conversation key. */
+export function generateConversationKey(): ArrayBuffer {
+  return crypto.getRandomValues(new Uint8Array(32)).buffer;
+}
+
+/** Import raw conversation-key bytes for AES-GCM use. */
+export async function importConversationKey(
+  raw: ArrayBuffer,
+): Promise<CryptoKey> {
+  return crypto.subtle.importKey("raw", raw, { name: AES }, false, [
+    "encrypt",
+    "decrypt",
+  ]);
 }
 
 export async function encryptMessage(
