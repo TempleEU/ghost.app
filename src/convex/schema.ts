@@ -30,14 +30,45 @@ const schema = defineSchema(
       isAnonymous: v.optional(v.boolean()), // is the user anonymous. do not remove
 
       role: v.optional(roleValidator), // role of the user. do not remove
-    }).index("email", ["email"]), // index for the email. do not remove or modify
 
-    // add other tables here
+      // GhostChat E2E identity (v1)
+      handle: v.optional(v.string()), // public chat handle, e.g. ghost-7f3a9c
+      publicKeyJwk: v.optional(v.string()), // ECDH P-256 public key (JSON JWK)
+    }).index("email", ["email"]) // index for the email. do not remove or modify
+      .index("handle", ["handle"]),
 
-    // tableName: defineTable({
-    //   ...
-    //   // table fields
-    // }).index("by_field", ["field"])
+    // GhostChat v1: conversations with per-member wrapped keys (server never
+    // sees plaintext or unwrapped keys).
+    conversations: defineTable({
+      // Denormalized member snapshots so the client can unwrap without extra joins.
+      members: v.array(
+        v.object({
+          userId: v.id("users"),
+          handle: v.string(),
+          publicKeyJwk: v.string(),
+        }),
+      ),
+      // One envelope per member: the conversation key wrapped with an ECDH-derived KEK.
+      keyEnvelopes: v.array(
+        v.object({
+          userId: v.id("users"),
+          iv: v.string(), // base64
+          wrappedKey: v.string(), // base64 AES-GCM ciphertext of the raw conversation key
+        }),
+      ),
+      createdAt: v.number(),
+      lastMessageAt: v.optional(v.number()),
+    })
+      .index("by_member", ["members"])
+      .index("by_lastMessage", ["lastMessageAt"]),
+
+    messages: defineTable({
+      conversationId: v.id("conversations"),
+      senderId: v.id("users"),
+      ciphertext: v.string(), // base64 AES-GCM ciphertext (plaintext never reaches server)
+      iv: v.string(), // base64 nonce
+      createdAt: v.number(),
+    }).index("by_conversation", ["conversationId", "createdAt"]),
   },
   {
     schemaValidation: false,
