@@ -1,6 +1,6 @@
 # GhostChat.app
 
-> **GitHub description:** 🔒 GhostChat — end-to-end encrypted messaging with disappearing messages, GhostVPN, biometric-gated keys and a privacy-first settings suite. Built with React, TypeScript, Tailwind and Convex.
+> **GitHub description:** 🔒 GhostChat — Encrypted Chat System. Powered by No Location. Built with React, TypeScript, Tailwind and Convex.
 
 **GhostChat** is a privacy-first encrypted messaging web app. Every message is sealed
 on your device with **AES-256-GCM**, keys are derived on-device through **ECDH P-256**,

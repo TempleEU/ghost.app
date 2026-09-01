@@ -83,7 +83,7 @@ export default function Landing() {
             transition={{ delay: 0.1, duration: 0.5 }}
             className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground"
           >
-            End-to-end encrypted messaging
+            Encrypted Chat System. Powered by No Location.
           </motion.p>
           <motion.h1
             initial={{ opacity: 0, y: 8 }}
@@ -176,7 +176,7 @@ export default function Landing() {
 
       <footer className="border-t border-border/60">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-6 text-xs text-muted-foreground">
-          <span>GhostChat — end-to-end encrypted messaging</span>
+          <span>GhostChat — Encrypted Chat System. Powered by No Location.</span>
           <span>v1</span>
         </div>
       </footer>
