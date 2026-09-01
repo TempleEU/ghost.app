@@ -362,6 +362,18 @@ function ChatWorkspace({
   const [convKeys, setConvKeys] = useState<Map<string, CryptoKey>>(new Map());
   const [keyError, setKeyError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showBlocked, setShowBlocked] = useState(false);
+
+  // Blocking & reporting: hide conversations whose other member is blocked.
+  const blockedHandles = useQuery(api.chat.listBlocked) as
+    | { handle: string; blockedId: string }[]
+    | undefined;
+  const blockedIds = new Set((blockedHandles ?? []).map((b) => b.blockedId));
+  const visibleConversations = showBlocked
+    ? conversations
+    : conversations.filter(
+        (c) => !c.members.some((m) => m.userId !== me.userId && blockedIds.has(m.userId)),
+      );
 
   useDeviceRegistration(privateKeyJwk, me.publicKeyJwk);
 
