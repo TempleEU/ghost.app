@@ -68,6 +68,9 @@ const schema = defineSchema(
       ciphertext: v.string(), // base64 AES-GCM ciphertext (plaintext never reaches server)
       iv: v.string(), // base64 nonce
       createdAt: v.number(),
+      // Disappearing messages: epoch ms after which clients hide the message.
+      // Enforcement is client-side; server cleanup is lazy.
+      expiresAt: v.optional(v.number()),
     }).index("by_conversation", ["conversationId", "createdAt"]),
   },
   {

@@ -1,0 +1,696 @@
+import { useMutation, useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
+import {
+  generateIdentity,
+  saveIdentity,
+  loadIdentity,
+  hasStoredIdentity,
+  generateConversationKey,
+  wrapConversationKey,
+  unwrapConversationKey,
+  encryptMessage,
+  decryptMessage,
+} from "@/lib/crypto";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/hooks/use-auth";
+import { ArrowLeft, Ghost, Lock, Loader2, Send, Timer, UserPlus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+type Identity = { userId: string; handle: string; publicKeyJwk: string };
+
+type Member = { userId: string; handle: string; publicKeyJwk: string };
+
+type Conversation = {
+  _id: Id<"conversations">;
+  members: Member[];
+  keyEnvelopes: { userId: string; iv: string; wrappedKey: string }[];
+  lastMessageAt: number;
+  latestMessage: { ciphertext: string; iv: string; senderId: string } | null;
+};
+
+type ChatMessage = {
+  _id: Id<"messages">;
+  senderId: string;
+  ciphertext: string;
+  iv: string;
+  createdAt: number;
+  expiresAt?: number;
+};
+
+const DISAPPEARING_OPTIONS = [
+  { value: "off", label: "Off", ms: undefined as number | undefined },
+  { value: "1h", label: "1 hour", ms: 60 * 60 * 1000 },
+  { value: "24h", label: "24 hours", ms: 24 * 60 * 60 * 1000 },
+  { value: "7d", label: "7 days", ms: 7 * 24 * 60 * 60 * 1000 },
+];
+
+function timeAgo(ts: number): string {
+  const s = Math.max(1, Math.floor((Date.now() - ts) / 1000));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+export default function Chat() {
+  const { user, signOut } = useAuth();
+  const myIdentity = useQuery(api.chat.myIdentity);
+  const conversations = useQuery(api.chat.listConversations) as
+    | Conversation[]
+    | undefined;
+
+  // Private key lives in memory only — unlocked with the passphrase.
+  const [privateKeyJwk, setPrivateKeyJwk] = useState<string | null>(null);
+  const [selectedConvId, setSelectedConvId] = useState<Id<"conversations"> | null>(null);
+
+  if (myIdentity === undefined) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </main>
+    );
+  }
+
+  if (myIdentity === null) {
+    return (
+      <IdentitySetup
+        email={user?.email ?? "guest"}
+        onDone={() => {
+          // myIdentity is a reactive query — it refreshes on its own.
+        }}
+        onSignOut={signOut}
+      />
+    );
+  }
+
+  if (!privateKeyJwk) {
+    return (
+      <UnlockScreen
+        identity={myIdentity as Identity}
+        onUnlocked={setPrivateKeyJwk}
+        onSignOut={signOut}
+      />
+    );
+  }
+
+  return (
+    <ChatWorkspace
+      me={myIdentity as Identity}
+      privateKeyJwk={privateKeyJwk}
+      conversations={conversations ?? []}
+      conversationsLoading={conversations === undefined}
+      selectedConvId={selectedConvId}
+      onSelectConv={setSelectedConvId}
+      onSignOut={signOut}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Identity setup — one-time: pick a handle, create keypair, wrap private key
+// ---------------------------------------------------------------------------
+
+function IdentitySetup({
+  email,
+  onDone,
+  onSignOut,
+}: {
+  email: string;
+  onDone: () => void;
+  onSignOut: () => void;
+}) {
+  const suggestion = useQuery(api.chat.suggestHandle);
+  const register = useMutation(api.chat.registerIdentity);
+  const [handle, setHandle] = useState("");
+  const [passphrase, setPassphrase] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (suggestion && !handle) setHandle(suggestion);
+  }, [suggestion, handle]);
+
+  const handleCreate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      if (passphrase.length < 8) {
+        throw new Error("Passphrase must be at least 8 characters.");
+      }
+      const identity = await generateIdentity();
+      // Private key is wrapped with the passphrase and stored ONLY in this
+      // browser. The server receives the public key and handle — nothing else.
+      await saveIdentity(passphrase, identity);
+      await register({ handle: handle.trim(), publicKeyJwk: identity.publicKeyJwk });
+      onDone();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create identity.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background p-6">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full border border-foreground/15">
+            <Ghost className="size-5 text-foreground/70" />
+          </div>
+          <CardTitle className="text-xl">Create your ghost identity</CardTitle>
+          <CardDescription>
+            Signed in as {email}. Your handle is public; your private key never
+            leaves this browser.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="handle">Ghost handle</Label>
+            <Input
+              id="handle"
+              value={handle}
+              onChange={(e) => setHandle(e.target.value)}
+              placeholder="ghost-7f3a9c"
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="passphrase">Encryption passphrase (min 8 chars)</Label>
+            <Input
+              id="passphrase"
+              type="password"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="Wraps your private key at rest"
+            />
+            <p className="text-xs text-muted-foreground">
+              If you lose this passphrase, your messages cannot be decrypted on
+              this device. There is no recovery.
+            </p>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button onClick={handleCreate} disabled={busy || !handle.trim() || passphrase.length < 8}>
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
+            Create identity
+          </Button>
+          <Button variant="ghost" onClick={onSignOut}>
+            Sign out
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Unlock — passphrase unwraps the private key into memory
+// ---------------------------------------------------------------------------
+
+function UnlockScreen({
+  identity,
+  onUnlocked,
+  onSignOut,
+}: {
+  identity: Identity;
+  onUnlocked: (privateKeyJwk: string) => void;
+  onSignOut: () => void;
+}) {
+  const [passphrase, setPassphrase] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleUnlock = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const key = await loadIdentity(passphrase);
+      if (!key) {
+        throw new Error("Wrong passphrase, or this browser has no stored key.");
+      }
+      onUnlocked(key);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unlock failed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-background p-6">
+      <Card className="w-full max-w-md">
+        <CardHeader className="text-center">
+          <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full border border-foreground/15">
+            <Lock className="size-5 text-foreground/70" />
+          </div>
+          <CardTitle className="text-xl">Unlock GhostChat</CardTitle>
+          <CardDescription>
+            Welcome back, {identity.handle}. Enter your passphrase to decrypt
+            your private key for this session.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {!hasStoredIdentity() && (
+            <p className="text-sm text-destructive">
+              No local key found in this browser. GhostChat keys are
+              device-bound — sign in on the browser where you created your
+              identity.
+            </p>
+          )}
+          <Input
+            type="password"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value)}
+            placeholder="Passphrase"
+            onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
+          />
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <Button onClick={handleUnlock} disabled={busy || !passphrase}>
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
+            Unlock
+          </Button>
+          <Button variant="ghost" onClick={onSignOut}>
+            Sign out
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Workspace — conversation list + chat view
+// ---------------------------------------------------------------------------
+
+function ChatWorkspace({
+  me,
+  privateKeyJwk,
+  conversations,
+  conversationsLoading,
+  selectedConvId,
+  onSelectConv,
+  onSignOut,
+}: {
+  me: Identity;
+  privateKeyJwk: string;
+  conversations: Conversation[];
+  conversationsLoading: boolean;
+  selectedConvId: Id<"conversations"> | null;
+  onSelectConv: (id: Id<"conversations"> | null) => void;
+  onSignOut: () => void;
+}) {
+  // Decrypted conversation keys, cached per conversation.
+  const [convKeys, setConvKeys] = useState<Map<string, CryptoKey>>(new Map());
+  const [keyError, setKeyError] = useState<string | null>(null);
+
+  const unwrapKey = useCallback(
+    async (conv: Conversation): Promise<CryptoKey | null> => {
+      const cached = convKeys.get(conv._id);
+      if (cached) return cached;
+      const envelope = conv.keyEnvelopes.find((e) => e.userId === me.userId);
+      if (!envelope) return null;
+      // The envelope was wrapped by another member; try each peer key until
+      // AES-GCM authentication succeeds (works for DMs and groups alike).
+      for (const member of conv.members) {
+        if (member.userId === me.userId) continue;
+        try {
+          const key = await unwrapConversationKey(
+            privateKeyJwk,
+            member.publicKeyJwk,
+            envelope.iv,
+            envelope.wrappedKey,
+          );
+          setConvKeys((prev) => new Map(prev).set(conv._id, key));
+          return key;
+        } catch {
+          // Wrong peer — try the next member.
+        }
+      }
+      return null;
+    },
+    [convKeys, me.userId, privateKeyJwk],
+  );
+
+  // Pre-decrypt keys for all conversations (previews + fast open).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const conv of conversations) {
+        if (cancelled) return;
+        if (!convKeys.has(conv._id)) await unwrapKey(conv);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversations, convKeys, unwrapKey]);
+
+  const selectedConv = conversations.find((c) => c._id === selectedConvId) ?? null;
+
+  return (
+    <main className="flex h-screen bg-background text-foreground">
+      {/* Sidebar */}
+      <aside className="flex w-80 shrink-0 flex-col border-r border-border/60">
+        <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="flex size-7 items-center justify-center rounded-full border border-foreground/20">
+              <Ghost className="size-3.5 text-foreground/70" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium leading-tight">GhostChat</span>
+              <span className="text-xs text-muted-foreground">{me.handle}</span>
+            </div>
+          </div>
+          <NewConversationDialog
+            me={me}
+            privateKeyJwk={privateKeyJwk}
+            onCreated={onSelectConv}
+          />
+        </header>
+        <div className="flex-1 overflow-y-auto">
+          {conversationsLoading && (
+            <div className="flex justify-center py-8">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {!conversationsLoading && conversations.length === 0 && (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+              No conversations yet. Start one with a ghost handle.
+            </p>
+          )}
+          {conversations.map((conv) => {
+            const other = conv.members.find((m) => m.userId !== me.userId);
+            return (
+              <button
+                key={conv._id}
+                onClick={() => onSelectConv(conv._id)}
+                className={`flex w-full flex-col gap-0.5 border-b border-border/40 px-4 py-3 text-left transition-colors hover:bg-accent/50 ${
+                  selectedConvId === conv._id ? "bg-accent" : ""
+                }`}
+              >
+                <span className="flex items-center gap-1.5 text-sm font-medium">
+                  <Ghost className="size-3.5 text-muted-foreground" />
+                  {other?.handle ?? "group"}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {conv.latestMessage ? timeAgo(conv.lastMessageAt) : "new"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <footer className="border-t border-border/60 p-3">
+          <Button variant="ghost" size="sm" className="w-full" onClick={onSignOut}>
+            Sign out
+          </Button>
+        </footer>
+      </aside>
+
+      {/* Chat area */}
+      <section className="flex flex-1 flex-col">
+        {keyError && <p className="p-4 text-sm text-destructive">{keyError}</p>}
+        {selectedConv ? (
+          <ChatView
+            key={selectedConv._id}
+            me={me}
+            conv={selectedConv}
+            convKey={convKeys.get(selectedConv._id) ?? null}
+            onBack={() => onSelectConv(null)}
+          />
+        ) : (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
+            <Ghost className="size-10 opacity-40" />
+            <p className="text-sm">Select a conversation to start chatting</p>
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chat view — decrypt history, send sealed messages
+// ---------------------------------------------------------------------------
+
+function ChatView({
+  me,
+  conv,
+  convKey,
+  onBack,
+}: {
+  me: Identity;
+  conv: Conversation;
+  convKey: CryptoKey | null;
+  onBack: () => void;
+}) {
+  const messages = useQuery(api.chat.listMessages, {
+    conversationId: conv._id,
+  }) as ChatMessage[] | undefined;
+  const send = useMutation(api.chat.sendMessage);
+
+  const [text, setText] = useState("");
+  const [disappearing, setDisappearing] = useState("off");
+  const [busy, setBusy] = useState(false);
+  const [plaintexts, setPlaintexts] = useState<Map<string, string>>(new Map());
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const other = conv.members.find((m) => m.userId !== me.userId);
+
+  // Decrypt messages as they arrive.
+  useEffect(() => {
+    if (!convKey || !messages) return;
+    let cancelled = false;
+    (async () => {
+      const next = new Map(plaintexts);
+      for (const m of messages) {
+        if (cancelled || next.has(m._id)) continue;
+        try {
+          next.set(m._id, await decryptMessage(convKey, m.ciphertext, m.iv));
+        } catch {
+          next.set(m._id, "[unable to decrypt]");
+        }
+      }
+      if (!cancelled) setPlaintexts(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [convKey, messages, plaintexts]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [plaintexts.size, messages?.length]);
+
+  const handleSend = async () => {
+    const body = text.trim();
+    if (!body || !convKey || busy) return;
+    setBusy(true);
+    try {
+      const { ciphertext, iv } = await encryptMessage(convKey, body);
+      const ms = DISAPPEARING_OPTIONS.find((o) => o.value === disappearing)?.ms;
+      await send({
+        conversationId: conv._id,
+        ciphertext,
+        iv,
+        expiresAt: ms ? Date.now() + ms : undefined,
+      });
+      setText("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <header className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
+        <Button variant="ghost" size="icon" className="md:hidden" onClick={onBack}>
+          <ArrowLeft className="size-4" />
+        </Button>
+        <Ghost className="size-4 text-muted-foreground" />
+        <span className="text-sm font-medium">{other?.handle ?? "group"}</span>
+        <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+          <Lock className="size-3" /> end-to-end encrypted
+        </span>
+      </header>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        {!convKey && (
+          <p className="text-center text-sm text-muted-foreground">
+            Decrypting conversation key…
+          </p>
+        )}
+        {messages?.map((m) => {
+          const mine = m.senderId === me.userId;
+          const body = plaintexts.get(m._id) ?? "…";
+          return (
+            <div key={m._id} className={`mb-2 flex ${mine ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-[70%] rounded-2xl px-3.5 py-2 text-sm ${
+                  mine
+                    ? "rounded-br-sm bg-primary text-primary-foreground"
+                    : "rounded-bl-sm bg-muted text-foreground"
+                }`}
+              >
+                <p className="whitespace-pre-wrap break-words">{body}</p>
+                <p
+                  className={`mt-1 flex items-center gap-1 text-[10px] ${
+                    mine ? "text-primary-foreground/60" : "text-muted-foreground"
+                  }`}
+                >
+                  {timeAgo(m.createdAt)}
+                  {m.expiresAt && <Timer className="size-3" />}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
+
+      <footer className="flex items-center gap-2 border-t border-border/60 px-4 py-3">
+        <Select value={disappearing} onValueChange={setDisappearing}>
+          <SelectTrigger className="w-[130px]" size="sm">
+            <Timer className="size-3.5" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {DISAPPEARING_OPTIONS.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+          placeholder={convKey ? "Write a sealed message…" : "Decrypting…"}
+          disabled={!convKey}
+        />
+        <Button size="icon" onClick={handleSend} disabled={!convKey || busy || !text.trim()}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+        </Button>
+      </footer>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// New conversation — find a handle, wrap a fresh key for each member
+// ---------------------------------------------------------------------------
+
+function NewConversationDialog({
+  me,
+  privateKeyJwk,
+  onCreated,
+}: {
+  me: Identity;
+  privateKeyJwk: string;
+  onCreated: (id: Id<"conversations">) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [handle, setHandle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const findByHandle = useQuery(
+    api.chat.findByHandle,
+    open && handle.trim().length > 1 ? { handle: handle.trim() } : "skip",
+  );
+  const createConversation = useMutation(api.chat.createConversation);
+
+  const handleCreate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const peer = findByHandle;
+      if (!peer || !peer.hasIdentity || !peer.handle) {
+        throw new Error("No ghost identity found for that handle.");
+      }
+      if (peer.userId === me.userId) {
+        throw new Error("That's your own handle.");
+      }
+      const raw = generateConversationKey();
+      // Wrap the conversation key for the peer (ECDH my-priv x peer-pub) and
+      // for myself (ECDH my-priv x my-pub) so both sides can unwrap it.
+      const forPeer = await wrapConversationKey(raw, privateKeyJwk, peer.publicKeyJwk);
+      const forMe = await wrapConversationKey(raw, privateKeyJwk, me.publicKeyJwk);
+      const members = [
+        { userId: me.userId as Id<"users">, handle: me.handle, publicKeyJwk: me.publicKeyJwk },
+        { userId: peer.userId as Id<"users">, handle: peer.handle, publicKeyJwk: peer.publicKeyJwk },
+      ];
+      const convId = await createConversation({
+        members,
+        keyEnvelopes: [
+          { userId: peer.userId as Id<"users">, iv: forPeer.iv, wrappedKey: forPeer.wrappedKey },
+          { userId: me.userId as Id<"users">, iv: forMe.iv, wrappedKey: forMe.wrappedKey },
+        ],
+      });
+      setOpen(false);
+      setHandle("");
+      onCreated(convId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create conversation.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon" title="New conversation">
+          <UserPlus className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>New conversation</DialogTitle>
+          <DialogDescription>
+            Enter the ghost handle of the person you want to talk to.
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          value={handle}
+          onChange={(e) => setHandle(e.target.value)}
+          placeholder="ghost-7f3a9c"
+        />
+        {findByHandle && (
+          <p className="text-sm text-muted-foreground">
+            {findByHandle.hasIdentity
+              ? `Found: ${findByHandle.handle}`
+              : "That handle exists but has no identity yet."}
+          </p>
+        )}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button
+            onClick={handleCreate}
+            disabled={busy || !findByHandle?.hasIdentity}
+          >
+            {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            Start chatting
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

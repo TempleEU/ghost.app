@@ -188,8 +188,10 @@ export const sendMessage = mutation({
     conversationId: v.id("conversations"),
     ciphertext: v.string(),
     iv: v.string(),
+    // Disappearing messages: optional epoch-ms expiry.
+    expiresAt: v.optional(v.number()),
   },
-  handler: async (ctx, { conversationId, ciphertext, iv }) => {
+  handler: async (ctx, { conversationId, ciphertext, iv, expiresAt }) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
 
@@ -206,6 +208,7 @@ export const sendMessage = mutation({
       ciphertext,
       iv,
       createdAt: now,
+      expiresAt,
     });
     await ctx.db.patch(conversationId, { lastMessageAt: now });
   },
@@ -232,12 +235,16 @@ export const listMessages = query({
       .order("asc")
       .collect();
 
-    return messages.map((m) => ({
-      _id: m._id,
-      senderId: m.senderId,
-      ciphertext: m.ciphertext,
-      iv: m.iv,
-      createdAt: m.createdAt,
-    }));
+    const now = Date.now();
+    return messages
+      .filter((m) => m.expiresAt === undefined || m.expiresAt > now)
+      .map((m) => ({
+        _id: m._id,
+        senderId: m.senderId,
+        ciphertext: m.ciphertext,
+        iv: m.iv,
+        createdAt: m.createdAt,
+        expiresAt: m.expiresAt,
+      }));
   },
 });

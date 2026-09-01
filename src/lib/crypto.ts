@@ -12,13 +12,21 @@ const EC = "P-256";
 const AES = "AES-GCM";
 const DERIVED_BITS = 256;
 
-function b64(buf: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+function b64(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return btoa(String.fromCharCode(...bytes));
 }
 
-function unb64(s: string): Uint8Array {
+/** Random bytes backed by a plain ArrayBuffer (TS 5.9 BufferSource-friendly). */
+function randomBytes(n: number): Uint8Array<ArrayBuffer> {
+  const buf = new ArrayBuffer(n);
+  crypto.getRandomValues(new Uint8Array(buf));
+  return new Uint8Array(buf);
+}
+
+function unb64(s: string): Uint8Array<ArrayBuffer> {
   const bin = atob(s);
-  const out = new Uint8Array(bin.length);
+  const out = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
@@ -55,7 +63,7 @@ async function deriveSharedBits(
   );
   const peer = await crypto.subtle.importKey(
     "jwk",
-    JSON.parse(peerPubJwk),
+    JSON.parse(peerPublicJwk),
     { name: "ECDH", namedCurve: EC },
     true,
     [],
@@ -79,7 +87,7 @@ export async function wrapConversationKey(
 ): Promise<{ iv: string; wrappedKey: string }> {
   const bits = await deriveSharedBits(myPrivateJwk, peerPublicJwk);
   const kek = await kekFromBits(bits);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = randomBytes(12);
   const wrapped = await crypto.subtle.encrypt({ name: AES, iv }, kek, rawKey);
   return { iv: b64(iv), wrappedKey: b64(wrapped) };
 }
@@ -108,7 +116,7 @@ export async function unwrapConversationKey(
 
 async function passphraseKey(
   passphrase: string,
-  salt: Uint8Array,
+  salt: Uint8Array<ArrayBuffer>,
 ): Promise<CryptoKey> {
   const base = await crypto.subtle.importKey(
     "raw",
@@ -120,7 +128,7 @@ async function passphraseKey(
   return crypto.subtle.deriveKey(
     { name: "PBKDF2", salt, iterations: 310_000, hash: "SHA-256" },
     base,
-    DERIVED_BITS,
+    { name: AES, length: DERIVED_BITS },
     false,
     ["encrypt", "decrypt"],
   );
@@ -132,9 +140,9 @@ export async function saveIdentity(
   passphrase: string,
   identity: { privateKeyJwk: string },
 ): Promise<void> {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const salt = randomBytes(16);
   const kek = await passphraseKey(passphrase, salt);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = randomBytes(12);
   const wrapped = await crypto.subtle.encrypt(
     { name: AES, iv },
     kek,
@@ -198,7 +206,7 @@ export async function encryptMessage(
   key: CryptoKey,
   plaintext: string,
 ): Promise<{ ciphertext: string; iv: string }> {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = randomBytes(12);
   const buf = await crypto.subtle.encrypt(
     { name: AES, iv },
     key,
