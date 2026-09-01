@@ -1,7 +1,7 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
+  "name": "GhostChat.app",
+  "short_name": "GhostChat",
+  "description": "GhostChat — privacy enhanced messaging with integrated E2E Protocol",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
