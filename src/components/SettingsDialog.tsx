@@ -33,11 +33,16 @@ import {
   HardDriveDownload,
   Loader2,
   LogOut,
+  Moon,
   ShieldCheck,
+  Smartphone,
+  Sun,
   Upload,
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useTheme, type Theme } from "@/hooks/use-theme";
+import { useAppMode } from "@/hooks/use-app-mode";
 
 type DeviceInfo = {
   _id: string;
@@ -87,6 +92,9 @@ export function SettingsDialog({
             <TabsTrigger value="profile" className="flex-1 gap-1.5">
               <UserRound className="size-3.5" /> Profile
             </TabsTrigger>
+            <TabsTrigger value="display" className="flex-1 gap-1.5">
+              <Sun className="size-3.5" /> Display
+            </TabsTrigger>
             <TabsTrigger value="storage" className="flex-1 gap-1.5">
               <HardDriveDownload className="size-3.5" /> Storage
             </TabsTrigger>
@@ -102,6 +110,9 @@ export function SettingsDialog({
           </TabsList>
           <TabsContent value="profile">
             <ProfileTab />
+          </TabsContent>
+          <TabsContent value="display">
+            <DisplayTab />
           </TabsContent>
           <TabsContent value="storage">
             <StorageTab />
@@ -230,6 +241,72 @@ function ProfileTab() {
         <Button size="sm" onClick={handleSave} disabled={busy}>
           {busy && <Loader2 className="size-3.5 animate-spin" />} Save
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Display & Brightness — Dark Mode on/off + App Mode switch
+// ---------------------------------------------------------------------------
+
+function DisplayTab() {
+  const { theme, setTheme } = useTheme();
+  const { appMode, setAppMode } = useAppMode();
+  const update = useMutation(api.settings.setDisplaySettings);
+
+  const themes: { value: Theme; label: string; icon: typeof Sun }[] = [
+    { value: "light", label: "Light", icon: Sun },
+    { value: "dark", label: "Dark", icon: Moon },
+    { value: "system", label: "Auto", icon: Smartphone },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4 py-2">
+      {/* Dark Mode — Settings > Display & Brightness */}
+      <div className="rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">Appearance</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Enable Dark Mode in GhostChat, or follow your system setting.
+        </p>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          {themes.map(({ value, label, icon: Icon }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setTheme(value);
+                void update({ theme: value });
+              }}
+              className={`flex flex-col items-center gap-1.5 rounded-lg border p-3 text-xs transition-colors ${
+                theme === value
+                  ? "border-foreground/40 bg-accent font-medium"
+                  : "border-border/60 hover:bg-accent/50"
+              }`}
+            >
+              <Icon className="size-4" />
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* App Mode — on/off switch (not desktop-view-only) */}
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+        <div>
+          <p className="text-sm font-medium">App Mode</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            When on, GhostChat runs in a compact phone-style app frame. When
+            off, you get the full desktop layout.
+          </p>
+        </div>
+        <Switch
+          checked={appMode}
+          onCheckedChange={(v) => {
+            setAppMode(v);
+            void update({ appMode: v });
+          }}
+        />
       </div>
     </div>
   );
@@ -454,7 +531,13 @@ function VerifyKeysTab({
 }
 
 // ---------------------------------------------------------------------------
-// GhostVPN — connection preferences (no external VPN API in catalog yet)
+// GhostVPN — connection management UI
+//
+// NOTE: This is a settings/connection-management UI, not a real VPN tunnel.
+// A browser app cannot open a system-level WireGuard/OpenVPN tunnel — that
+// requires a native client (Android/iOS/Windows). The toggle, server list,
+// kill switch, protocol and API settings below manage the *configuration*
+// that a native GhostVPN client would consume via the private API endpoint.
 // ---------------------------------------------------------------------------
 
 const VPN_SERVERS = [
@@ -469,6 +552,14 @@ const VPN_SERVERS = [
   { id: "ap-sg", label: "Asia Pacific · Singapore", country: "SG" },
 ];
 
+const VPN_PROTOCOLS = [
+  { id: "wireguard", label: "WireGuard (recommended)" },
+  { id: "openvpn", label: "OpenVPN (UDP)" },
+  { id: "ikev2", label: "IKEv2/IPsec" },
+];
+
+type VpnConnState = "disconnected" | "connecting" | "connected";
+
 function GhostVpnTab() {
   const user = useQuery(api.users.currentUser);
   const setVpn = useMutation(api.settings.setVpnSettings);
@@ -477,6 +568,12 @@ function GhostVpnTab() {
   const [apiSaved, setApiSaved] = useState(false);
   const loaded = useRef(false);
 
+  // Connection lifecycle — simulates the handshake a native client performs
+  // against the configured endpoint (no real tunnel in a browser app).
+  const [connState, setConnState] = useState<VpnConnState>("disconnected");
+  const [connectedAt, setConnectedAt] = useState<number | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+
   useEffect(() => {
     if (user && !loaded.current) {
       loaded.current = true;
@@ -484,7 +581,19 @@ function GhostVpnTab() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (connState !== "connected" || connectedAt === null) return;
+    const id = setInterval(
+      () => setElapsed(Math.floor((Date.now() - connectedAt) / 1000)),
+      1000,
+    );
+    return () => clearInterval(id);
+  }, [connState, connectedAt]);
+
   const enabled = user?.vpnEnabled ?? false;
+  const killSwitch = user?.vpnKillSwitch ?? false;
+  const autoConnect = user?.vpnAutoConnect ?? false;
+  const protocol = user?.vpnProtocol ?? "wireguard";
   const mode = user?.vpnMode ?? "fastest";
   const server = user?.vpnServer ?? "auto";
 
@@ -497,8 +606,80 @@ function GhostVpnTab() {
     }
   };
 
+  const connect = () => {
+    setConnState("connecting");
+    // Simulated handshake — a native client would negotiate the tunnel here.
+    setTimeout(() => {
+      setConnState("connected");
+      setConnectedAt(Date.now());
+      setElapsed(0);
+    }, 1200);
+  };
+
+  const disconnect = () => {
+    setConnState("disconnected");
+    setConnectedAt(null);
+    setElapsed(0);
+  };
+
+  const toggleService = (v: boolean) => {
+    void patch({ enabled: v });
+    if (!v && connState !== "disconnected") disconnect();
+  };
+
+  const serverLabel =
+    mode === "fastest"
+      ? "Fastest available"
+      : VPN_SERVERS.find((s) => s.id === server)?.label ?? server;
+
   return (
     <div className="flex flex-col gap-3 py-2">
+      {/* Connection status card */}
+      <div className="rounded-lg border border-border/60 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-medium">
+              <span
+                className={`inline-block size-2 rounded-full ${
+                  connState === "connected"
+                    ? "bg-emerald-500"
+                    : connState === "connecting"
+                      ? "animate-pulse bg-amber-500"
+                      : "bg-muted-foreground/40"
+                }`}
+              />
+              {connState === "connected"
+                ? `Connected · ${serverLabel}`
+                : connState === "connecting"
+                  ? "Connecting…"
+                  : "Disconnected"}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {connState === "connected"
+                ? `Session ${Math.floor(elapsed / 60)}m ${elapsed % 60}s · ${protocol}`
+                : "Settings/connection management — a native client performs the actual tunnel."}
+            </p>
+          </div>
+          {connState === "connected" ? (
+            <Button size="sm" variant="outline" onClick={disconnect}>
+              Disconnect
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              disabled={connState === "connecting" || !enabled || busy}
+              onClick={connect}
+            >
+              {connState === "connecting" && (
+                <Loader2 className="size-3.5 animate-spin" />
+              )}
+              Connect
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Service toggle */}
       <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
         <div>
           <p className="text-sm font-medium">GhostVPN Service</p>
@@ -510,10 +691,11 @@ function GhostVpnTab() {
         <Switch
           checked={enabled}
           disabled={busy || user === undefined}
-          onCheckedChange={(v) => patch({ enabled: v })}
+          onCheckedChange={toggleService}
         />
       </div>
 
+      {/* Server selection */}
       <div className="flex flex-col gap-2">
         <Label>Server selection</Label>
         <Select
@@ -540,6 +722,58 @@ function GhostVpnTab() {
         )}
       </div>
 
+      {/* Protocol */}
+      <div className="flex flex-col gap-2">
+        <Label>Tunnel protocol</Label>
+        <Select
+          value={protocol}
+          onValueChange={(v) => patch({ protocol: v })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {VPN_PROTOCOLS.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Kill switch & auto-connect */}
+      <div className="flex flex-col gap-3 rounded-lg border border-border/60 p-3">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Kill switch</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              Block all traffic if the tunnel drops, so your real IP never
+              leaks.
+            </p>
+          </div>
+          <Switch
+            checked={killSwitch}
+            disabled={busy || user === undefined}
+            onCheckedChange={(v) => patch({ killSwitch: v })}
+          />
+        </div>
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Auto-connect</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              Connect automatically when GhostChat starts.
+            </p>
+          </div>
+          <Switch
+            checked={autoConnect}
+            disabled={busy || user === undefined}
+            onCheckedChange={(v) => patch({ autoConnect: v })}
+          />
+        </div>
+      </div>
+
+      {/* Private VPN API */}
       <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
         <p className="text-sm font-medium">Private VPN API (optional)</p>
         <p className="text-xs leading-5 text-muted-foreground">

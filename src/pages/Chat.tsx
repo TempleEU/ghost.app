@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
+import { useAppMode } from "@/hooks/use-app-mode";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { publicKeyFingerprint } from "@/lib/crypto";
 import { ArrowLeft, Ghost, Lock, Loader2, MoreVertical, Send, Settings, ShieldAlert, Timer, UserPlus } from "lucide-react";
@@ -366,6 +367,7 @@ function ChatWorkspace({
   // Decrypted conversation keys, cached per conversation.
   const [convKeys, setConvKeys] = useState<Map<string, CryptoKey>>(new Map());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { appMode } = useAppMode();
 
   // Blocking & reporting: hide conversations whose other member is blocked.
   const blockedHandles = useQuery(api.chat.listBlocked) as
@@ -424,8 +426,14 @@ function ChatWorkspace({
 
   return (
     <main className="flex h-screen bg-background text-foreground">
-      {/* Sidebar */}
-      <aside className="flex w-80 shrink-0 flex-col border-r border-border/60">
+      {/* Sidebar — phone-style: full width, hidden while a chat is open */}
+      <aside
+        className={`flex shrink-0 flex-col border-r border-border/60 ${
+          appMode
+            ? `w-full ${selectedConv !== null ? "hidden" : ""}`
+            : "w-80"
+        }`}
+      >
         <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="flex size-7 items-center justify-center rounded-full border border-foreground/20">
@@ -491,8 +499,12 @@ function ChatWorkspace({
         </footer>
       </aside>
 
-      {/* Chat area */}
-      <section className="flex flex-1 flex-col">
+      {/* Chat area — full width in App Mode once a chat is open */}
+      <section
+        className={`flex flex-1 flex-col ${
+          appMode && selectedConv === null ? "hidden" : ""
+        }`}
+      >
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}

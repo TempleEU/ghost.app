@@ -32,8 +32,14 @@ export const setVpnSettings = mutation({
     mode: v.optional(v.string()), // "fastest" | "manual"
     server: v.optional(v.string()), // server id ("auto" for fastest)
     privateApiUrl: v.optional(v.string()), // optional private VPN API endpoint
+    killSwitch: v.optional(v.boolean()), // block traffic if tunnel drops
+    autoConnect: v.optional(v.boolean()), // auto-connect on app start
+    protocol: v.optional(v.string()), // "wireguard" | "openvpn" | "ikev2"
   },
-  handler: async (ctx, { enabled, mode, server, privateApiUrl }) => {
+  handler: async (
+    ctx,
+    { enabled, mode, server, privateApiUrl, killSwitch, autoConnect, protocol },
+  ) => {
     const userId = await getAuthUserId(ctx);
     if (userId === null) throw new Error("Not signed in");
     const patch: Record<string, unknown> = {};
@@ -41,6 +47,30 @@ export const setVpnSettings = mutation({
     if (mode !== undefined) patch.vpnMode = mode;
     if (server !== undefined) patch.vpnServer = server;
     if (privateApiUrl !== undefined) patch.vpnPrivateApiUrl = privateApiUrl;
+    if (killSwitch !== undefined) patch.vpnKillSwitch = killSwitch;
+    if (autoConnect !== undefined) patch.vpnAutoConnect = autoConnect;
+    if (protocol !== undefined) patch.vpnProtocol = protocol;
+    if (Object.keys(patch).length === 0) return;
+    await ctx.db.patch(userId, patch);
+  },
+});
+
+/**
+ * Display & Brightness + App Mode (Menu > Settings).
+ * These are per-account preferences; the client also mirrors them in
+ * localStorage so the correct theme/app frame applies before first paint.
+ */
+export const setDisplaySettings = mutation({
+  args: {
+    theme: v.optional(v.string()), // "light" | "dark" | "system"
+    appMode: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { theme, appMode }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    const patch: Record<string, unknown> = {};
+    if (theme !== undefined) patch.theme = theme;
+    if (appMode !== undefined) patch.appMode = appMode;
     if (Object.keys(patch).length === 0) return;
     await ctx.db.patch(userId, patch);
   },

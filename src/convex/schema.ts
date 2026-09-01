@@ -48,6 +48,14 @@ const schema = defineSchema(
       vpnMode: v.optional(v.string()), // "fastest" | "manual"
       vpnServer: v.optional(v.string()), // manual server id
       vpnPrivateApiUrl: v.optional(v.string()), // optional private VPN API endpoint
+      vpnKillSwitch: v.optional(v.boolean()), // block traffic if tunnel drops
+      vpnAutoConnect: v.optional(v.boolean()), // auto-connect on app start
+      vpnProtocol: v.optional(v.string()), // "wireguard" | "openvpn" | "ikev2"
+
+      // Display & Brightness / App Mode (per-account preferences; local
+      // toggles are also mirrored in localStorage for instant boot).
+      theme: v.optional(v.string()), // "light" | "dark" | "system"
+      appMode: v.optional(v.boolean()), // phone-style app frame on/off
     }).index("email", ["email"]) // index for the email. do not remove or modify
       .index("handle", ["handle"]),
 
