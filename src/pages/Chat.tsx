@@ -565,6 +565,29 @@ function ChatView({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [plaintexts.size, messages?.length]);
 
+  // Privacy-focused notifications: only when the tab is hidden, and the
+  // notification body never contains plaintext — just a count.
+  const lastSeenCount = useRef(0);
+  useEffect(() => {
+    if (!messages) return;
+    const count = messages.length;
+    const prev = lastSeenCount.current;
+    lastSeenCount.current = count;
+    if (
+      count > prev &&
+      prev > 0 &&
+      document.visibilityState === "hidden" &&
+      "Notification" in window &&
+      Notification.permission === "granted"
+    ) {
+      const n = count - prev;
+      new Notification("GhostChat", {
+        body: `${n} new encrypted message${n > 1 ? "s" : ""}`,
+        tag: `ghostchat-${conv._id}`,
+      });
+    }
+  }, [messages?.length, conv._id]);
+
   const handleSend = async () => {
     const body = text.trim();
     if (!body || !convKey || busy) return;
