@@ -189,12 +189,12 @@ function IdentitySetup({
 
   useEffect(() => {
     if (suggestion && !handle) {
-      setHandle(suggestion);
+      // Defer so the state update doesn't fire synchronously during the
+      // effect pass (React compiler strictness: cascading render).
+      const id = requestAnimationFrame(() => setHandle(suggestion))
+      return () => cancelAnimationFrame(id)
     }
-    // Runs only when a fresh suggestion arrives; `handle` is read to avoid
-    // overwriting user input, not to retrigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggestion]);
+  }, [suggestion, handle]);
 
   const handleCreate = async () => {
     setBusy(true);

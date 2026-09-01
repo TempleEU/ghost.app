@@ -88,7 +88,10 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api || !setApi) return
-    setApi(api)
+    // Defer the state update so it doesn't fire synchronously during the
+    // effect pass (React compiler strictness: cascading render).
+    const id = requestAnimationFrame(() => setApi(api))
+    return () => cancelAnimationFrame(id)
   }, [api, setApi])
 
   React.useEffect(() => {

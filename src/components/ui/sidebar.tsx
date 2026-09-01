@@ -606,10 +606,17 @@ function SidebarMenuSkeleton({
 }: React.ComponentProps<"div"> & {
   showIcon?: boolean
 }) {
-  // Random width between 50 to 90%.
+  // Deterministic pseudo-random width between 50 to 90% (seeded by the
+  // element's position in props to avoid impure Math.random during render).
   const width = React.useMemo(() => {
-    return `${Math.floor(Math.random() * 40) + 50}%`
-  }, [])
+    const seed = Math.abs(
+      [...String(props["data-key"] ?? "x")].reduce(
+        (acc, c) => (acc * 31 + c.charCodeAt(0)) | 0,
+        7,
+      ),
+    )
+    return `${50 + (seed % 40)}%`
+  }, [props["data-key"]])
 
   return (
     <div
