@@ -142,7 +142,7 @@ function useDeviceRegistration(privateKeyJwk: string | null, publicKeyJwk: strin
       const fp = await publicKeyFingerprint(publicKeyJwk);
       try {
         await touchDevice({ label: deviceLabel(), keyFingerprint: fp });
-      } catch (_) {
+      } catch {
         // Non-fatal: security-alert log is best-effort.
       }
     })();
@@ -188,8 +188,13 @@ function IdentitySetup({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (suggestion && !handle) setHandle(suggestion);
-  }, [suggestion, handle]);
+    if (suggestion && !handle) {
+      setHandle(suggestion);
+    }
+    // Runs only when a fresh suggestion arrives; `handle` is read to avoid
+    // overwriting user input, not to retrigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestion]);
 
   const handleCreate = async () => {
     setBusy(true);
@@ -360,20 +365,16 @@ function ChatWorkspace({
 }) {
   // Decrypted conversation keys, cached per conversation.
   const [convKeys, setConvKeys] = useState<Map<string, CryptoKey>>(new Map());
-  const [keyError, setKeyError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showBlocked, setShowBlocked] = useState(false);
 
   // Blocking & reporting: hide conversations whose other member is blocked.
   const blockedHandles = useQuery(api.chat.listBlocked) as
     | { handle: string; blockedId: string }[]
     | undefined;
   const blockedIds = new Set((blockedHandles ?? []).map((b) => b.blockedId));
-  const visibleConversations = showBlocked
-    ? conversations
-    : conversations.filter(
-        (c) => !c.members.some((m) => m.userId !== me.userId && blockedIds.has(m.userId)),
-      );
+  const visibleConversations = conversations.filter(
+    (c) => !c.members.some((m) => m.userId !== me.userId && blockedIds.has(m.userId)),
+  );
 
   useDeviceRegistration(privateKeyJwk, me.publicKeyJwk);
 
@@ -419,7 +420,7 @@ function ChatWorkspace({
     };
   }, [conversations, convKeys, unwrapKey]);
 
-  const selectedConv = conversations.find((c) => c._id === selectedConvId) ?? null;
+  const selectedConv = visibleConversations.find((c) => c._id === selectedConvId) ?? null;
 
   return (
     <main className="flex h-screen bg-background text-foreground">
@@ -462,7 +463,7 @@ function ChatWorkspace({
               No conversations yet. Start one with a ghost handle.
             </p>
           )}
-          {conversations.map((conv) => {
+          {visibleConversations.map((conv) => {
             const other = conv.members.find((m) => m.userId !== me.userId);
             return (
               <button
@@ -498,7 +499,6 @@ function ChatWorkspace({
           handle={me.handle}
           publicKeyJwk={me.publicKeyJwk}
         />
-        {keyError && <p className="p-4 text-sm text-destructive">{keyError}</p>}
         {selectedConv ? (
           <ChatView
             key={selectedConv._id}
