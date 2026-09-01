@@ -38,6 +38,7 @@ import {
   Loader2,
   LogOut,
   Moon,
+  Pencil,
   Plus,
   ShieldCheck,
   Smartphone,
@@ -50,6 +51,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useAppMode } from "@/hooks/use-app-mode";
 import { parseKeyBlob, type ParsedVpnKey } from "@/lib/vpn-keys";
+import { Server, ServerCog } from "lucide-react";
 
 type DeviceInfo = {
   _id: string;
@@ -114,6 +116,9 @@ export function SettingsDialog({
             <TabsTrigger value="vpn" className="flex-1 gap-1.5">
               <Globe className="size-3.5" /> GhostVPN
             </TabsTrigger>
+            <TabsTrigger value="serverhub" className="flex-1 gap-1.5">
+              <ServerCog className="size-3.5" /> Hub
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="profile">
             <ProfileTab />
@@ -132,6 +137,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="vpn">
             <GhostVpnTab />
+          </TabsContent>
+          <TabsContent value="serverhub">
+            <ServerHubTab />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -1030,3 +1038,298 @@ function VpnAccessKeys() {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// GhostVPN Server Hub — connect your own Outline server, then create, list,
+// rename and delete real access keys straight from GhostChat. Keys land in
+// the Access Keys list and tunnel via the Outline client.
+// ---------------------------------------------------------------------------
+
+type OutlineServerKey = {
+  id: string;
+  name: string;
+  port: number;
+  method: string;
+  accessUrl: string;
+};
+
+function ServerHubTab() {
+  const server = useQuery(api.vpnServerSettings.getServer) as
+    | { apiUrl: string; certSha256: string; name: string; verified: boolean }
+    | null
+    | undefined;
+  const saveServer = useMutation(api.vpnServerSettings.saveServer);
+  const clearServer = useMutation(api.vpnServerSettings.clearServer);
+  const testConn = useAction(api.vpnServer.testConnection);
+  const listKeys = useAction(api.vpnServer.listServerKeys);
+  const createKey = useAction(api.vpnServer.createServerKey);
+  const renameKey = useAction(api.vpnServer.renameServerKey);
+  const deleteKey = useAction(api.vpnServer.deleteServerKey);
+
+  const [apiUrl, setApiUrl] = useState("");
+  const [certSha256, setCertSha256] = useState("");
+  const [newKeyName, setNewKeyName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [serverKeys, setServerKeys] = useState<OutlineServerKey[] | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    if (server && !loaded.current) {
+      loaded.current = true;
+      setApiUrl(server.apiUrl);
+      setCertSha256(server.certSha256);
+    }
+  }, [server]);
+
+  const handleTest = async () => {
+    setBusy(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      const res = await testConn({ apiUrl: apiUrl.trim(), certSha256: certSha256.trim() });
+      setTestResult(`Connected to "${res.name}" · ${res.keyCount} key(s)`);
+      await saveServer({
+        apiUrl: apiUrl.trim(),
+        certSha256: certSha256.trim(),
+        name: res.name,
+        verified: true,
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Connection test failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleListKeys = async () => {
+    if (!server) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setServerKeys(await listKeys({ apiUrl: server.apiUrl, certSha256: server.certSha256 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to list keys");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCreateKey = async () => {
+    if (!server) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createKey({
+        apiUrl: server.apiUrl,
+        certSha256: server.certSha256,
+        name: newKeyName.trim() || "GhostChat key",
+      });
+      setNewKeyName("");
+      setServerKeys(await listKeys({ apiUrl: server.apiUrl, certSha256: server.certSha256 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create key");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteKey = async (k: OutlineServerKey) => {
+    if (!server) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await deleteKey({ apiUrl: server.apiUrl, certSha256: server.certSha256, keyId: k.id });
+      setServerKeys(await listKeys({ apiUrl: server.apiUrl, certSha256: server.certSha256 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete key");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRenameKey = async (k: OutlineServerKey) => {
+    if (!server) return;
+    const name = window.prompt("New name", k.name);
+    if (!name || !name.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await renameKey({
+        apiUrl: server.apiUrl,
+        certSha256: server.certSha256,
+        keyId: k.id,
+        name: name.trim(),
+      });
+      setServerKeys(await listKeys({ apiUrl: server.apiUrl, certSha256: server.certSha256 }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to rename key");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <p className="text-xs leading-5 text-muted-foreground">
+        Connect your own Outline (Shadowsocks) server — deployed via
+        vpnserverhub.com or self-hosted. GhostChat becomes your management
+        hub: create, rename and revoke real VPN access keys. Keys tunnel via
+        the Outline client.
+      </p>
+
+      {/* Connection form */}
+      <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Outline server connection</p>
+          {server?.verified && (
+            <span className="flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">
+              <Check className="size-3" /> connected
+            </span>
+          )}
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="outlineApiUrl">Management API URL</Label>
+          <Input
+            id="outlineApiUrl"
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
+            placeholder="https://1.2.3.4:1234/xxxxxxxx"
+            className="font-mono text-xs"
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="outlineCert">API certificate SHA-256</Label>
+          <Input
+            id="outlineCert"
+            value={certSha256}
+            onChange={(e) => setCertSha256(e.target.value)}
+            placeholder="64-char hex fingerprint from Outline Manager"
+            className="font-mono text-xs"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Button size="sm" disabled={busy || !apiUrl.trim() || !certSha256.trim()} onClick={handleTest}>
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
+            Test &amp; save
+          </Button>
+          {server && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={async () => {
+                await clearServer();
+                setServerKeys(null);
+                setTestResult(null);
+              }}
+            >
+              Disconnect
+            </Button>
+          )}
+        </div>
+        {testResult && <p className="text-xs text-emerald-600">{testResult}</p>}
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <p className="text-xs leading-5 text-muted-foreground">
+          Both values come from Outline Manager ("Set up Outline Manager" →
+          copy the API URL and cert fingerprint). The cert fingerprint pins
+          the server's self-signed TLS certificate.
+        </p>
+      </div>
+
+      {/* Key management — only when connected */}
+      {server?.verified && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">Access keys on {server.name}</p>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleListKeys} disabled={busy}>
+              <Globe className="size-3.5" /> Refresh
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              placeholder="New key name (e.g. Phone, Laptop)"
+            />
+            <Button
+              size="sm"
+              disabled={busy}
+              onClick={handleCreateKey}
+            >
+              {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              Create
+            </Button>
+          </div>
+          {serverKeys === null && (
+            <p className="text-xs text-muted-foreground">Press Refresh to list keys on the server.</p>
+          )}
+          {serverKeys?.length === 0 && (
+            <p className="text-xs text-muted-foreground">No keys on this server yet.</p>
+          )}
+          {serverKeys?.map((k) => (
+            <div
+              key={k.id}
+              className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1.5"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium">{k.name}</p>
+                <p className="truncate text-[10px] text-muted-foreground">
+                  port {k.port} · {k.method}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  title="Copy ss:// key"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(k.accessUrl);
+                    setCopiedId(k.id);
+                    setTimeout(() => setCopiedId(null), 1500);
+                  }}
+                >
+                  {copiedId === k.id ? (
+                    <Check className="size-3 text-emerald-600" />
+                  ) : (
+                    <Copy className="size-3" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  title="Rename"
+                  disabled={busy}
+                  onClick={() => handleRenameKey(k)}
+                >
+                  <Pencil className="size-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  title="Revoke key (deletes VPN access)"
+                  disabled={busy}
+                  onClick={() => handleDeleteKey(k)}
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              </div>
+            </div>
+          ))}
+          {serverKeys && serverKeys.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Created keys are imported into Access Keys automatically — open
+              them in the Outline client to tunnel.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+

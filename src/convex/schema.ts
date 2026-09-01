@@ -56,6 +56,12 @@ const schema = defineSchema(
       // toggles are also mirrored in localStorage for instant boot).
       theme: v.optional(v.string()), // "light" | "dark" | "system"
       appMode: v.optional(v.boolean()), // phone-style app frame on/off
+
+      // GhostVPN Server Hub — Outline management API connection
+      vpnServerApiUrl: v.optional(v.string()), // e.g. https://1.2.3.4:port/xxxxx
+      vpnServerCertSha256: v.optional(v.string()), // API cert fingerprint
+      vpnServerName: v.optional(v.string()),
+      vpnServerVerified: v.optional(v.boolean()), // connection test passed
     }).index("email", ["email"]) // index for the email. do not remove or modify
       .index("handle", ["handle"]),
 
@@ -133,7 +139,7 @@ const schema = defineSchema(
       port: v.number(),
       method: v.optional(v.string()),
       raw: v.string(), // full original URI for import into native clients
-      source: v.optional(v.string()), // "paste" | subscription URL
+      source: v.optional(v.string()), // "paste" | subscription URL | "outline:<serverId>"
       createdAt: v.number(),
     }).index("by_user", ["userId", "createdAt"]),
   },
