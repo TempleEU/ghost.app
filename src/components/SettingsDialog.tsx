@@ -56,24 +56,6 @@ function timeAgo(ts: number): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-function deviceLabel(): string {
-  const ua = navigator.userAgent;
-  const os =
-    /Windows/.test(ua) ? "Windows"
-    : /Mac OS X/.test(ua) ? "macOS"
-    : /Android/.test(ua) ? "Android"
-    : /iPhone|iPad/.test(ua) ? "iOS"
-    : /Linux/.test(ua) ? "Linux"
-    : "Unknown OS";
-  const browser =
-    /Edg\//.test(ua) ? "Edge"
-    : /Chrome\//.test(ua) ? "Chrome"
-    : /Firefox\//.test(ua) ? "Firefox"
-    : /Safari\//.test(ua) ? "Safari"
-    : "Browser";
-  return `${os} · ${browser}`;
-}
-
 /**
  * Menu > Settings — profile & avatar, message storage, security alerts,
  * and key verification for end-to-end encrypted chats.
