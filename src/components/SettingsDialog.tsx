@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { publicKeyFingerprint } from "@/lib/crypto";
 import { Button } from "@/components/ui/button";
@@ -27,22 +27,29 @@ import {
 } from "@/components/ui/tabs";
 import {
   AlertTriangle,
+  Check,
+  Copy,
   Fingerprint,
   Ghost,
   Globe,
   HardDriveDownload,
+  KeyRound,
+  Link2,
   Loader2,
   LogOut,
   Moon,
+  Plus,
   ShieldCheck,
   Smartphone,
   Sun,
+  Trash2,
   Upload,
   UserRound,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useAppMode } from "@/hooks/use-app-mode";
+import { parseKeyBlob, type ParsedVpnKey } from "@/lib/vpn-keys";
 
 type DeviceInfo = {
   _id: string;
@@ -773,6 +780,9 @@ function GhostVpnTab() {
         </div>
       </div>
 
+      {/* Access keys — real Outline/VLESS/VMess keys */}
+      <VpnAccessKeys />
+
       {/* Private VPN API */}
       <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
         <p className="text-sm font-medium">Private VPN API (optional)</p>
@@ -803,6 +813,220 @@ function GhostVpnTab() {
         </div>
         {apiSaved && <p className="text-xs text-muted-foreground">Saved.</p>}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GhostVPN Access Keys — import, validate, store and launch real Outline /
+// Shadowsocks / VLESS / VMess keys. The OS client (Outline, v2rayNG,
+// v2rayN, Shadowrocket) opens the tunnel; GhostChat manages the keys.
+// ---------------------------------------------------------------------------
+
+type VpnKeyRow = {
+  _id: string;
+  kind: string;
+  name: string;
+  host: string;
+  port: number;
+  method?: string;
+  raw: string;
+  source?: string;
+  createdAt: number;
+};
+
+function VpnAccessKeys() {
+  const keys = useQuery(api.vpn.listKeys) as VpnKeyRow[] | undefined;
+  const addKey = useMutation(api.vpn.addKey);
+  const removeKey = useMutation(api.vpn.removeKey);
+  const fetchSub = useAction(api.vpn.fetchSubscription);
+
+  const [importOpen, setImportOpen] = useState(false);
+  const [subUrl, setSubUrl] = useState("");
+  const [pasteText, setPasteText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const importKeys = async (parsed: ParsedVpnKey[], source: string) => {
+    if (parsed.length === 0) {
+      setError("No valid keys found. Supported: ss://, vless://, vmess:// (one per line or a base64 subscription body).");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      for (const k of parsed) {
+        await addKey({
+          kind: k.kind,
+          name: k.name,
+          host: k.host,
+          port: k.port,
+          method: k.method,
+          raw: k.raw,
+          source,
+        });
+      }
+      setPasteText("");
+      setSubUrl("");
+      setImportOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handlePasteImport = () => importKeys(parseKeyBlob(pasteText), "paste");
+
+  const handleSubImport = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const body = await fetchSub({ url: subUrl.trim() });
+      await importKeys(parseKeyBlob(body), subUrl.trim());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Subscription fetch failed");
+      setBusy(false);
+    }
+  };
+
+  const handleCopy = async (k: VpnKeyRow) => {
+    await navigator.clipboard.writeText(k.raw);
+    setCopiedId(k._id);
+    setTimeout(() => setCopiedId(null), 1500);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">Access keys</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            Outline / Shadowsocks / VLESS / VMess keys. Tap a key to open it in
+            the Outline or v2ray client — the client establishes the tunnel.
+          </p>
+        </div>
+        <Button size="sm" variant="outline" className="gap-1" onClick={() => setImportOpen(true)}>
+          <Plus className="size-3.5" /> Import
+        </Button>
+      </div>
+
+      {keys === undefined && (
+        <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      )}
+      {keys?.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No keys yet. Paste ss:// / vless:// / vmess:// keys or a subscription
+          URL (e.g. a GitHub vpn-keys list raw URL).
+        </p>
+      )}
+      {keys?.map((k) => (
+        <div
+          key={k._id}
+          className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1.5"
+        >
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 truncate text-xs font-medium">
+              <KeyRound className="size-3 shrink-0 text-muted-foreground" />
+              {k.name}
+              <span className="rounded bg-muted px-1 text-[10px] uppercase text-muted-foreground">
+                {k.kind}
+              </span>
+            </p>
+            <p className="truncate text-[10px] text-muted-foreground">
+              {k.host}:{k.port}
+              {k.method ? ` · ${k.method}` : ""}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              title="Copy key URI"
+              onClick={() => handleCopy(k)}
+            >
+              {copiedId === k._id ? (
+                <Check className="size-3 text-emerald-600" />
+              ) : (
+                <Copy className="size-3" />
+              )}
+            </Button>
+            <a href={k.raw} title="Open in client">
+              <Button variant="ghost" size="icon" className="size-7">
+                <Link2 className="size-3" />
+              </Button>
+            </a>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              title="Delete key"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await removeKey({ keyId: k._id as never });
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          </div>
+        </div>
+      ))}
+
+      {/* Import dialog */}
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Import access keys</DialogTitle>
+            <DialogDescription>
+              Paste keys (one per line) or a subscription URL. Base64
+              subscription bodies are decoded automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vpnSubUrl">Subscription URL</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="vpnSubUrl"
+                  value={subUrl}
+                  onChange={(e) => setSubUrl(e.target.value)}
+                  placeholder="https://raw.githubusercontent.com/…/keys.txt"
+                />
+                <Button
+                  size="sm"
+                  disabled={busy || !subUrl.trim()}
+                  onClick={handleSubImport}
+                >
+                  {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Link2 className="size-3.5" />}
+                  Fetch
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="vpnPaste">Or paste keys</Label>
+              <textarea
+                id="vpnPaste"
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                placeholder={"ss://…\nvless://…\nvmess://…"}
+                className="min-h-24 w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <Button onClick={handlePasteImport} disabled={busy || !pasteText.trim()}>
+              {busy ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              Import keys
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

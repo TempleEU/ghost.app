@@ -122,6 +122,20 @@ const schema = defineSchema(
       reason: v.string(),
       createdAt: v.number(),
     }).index("by_reporter", ["reporterId"]),
+
+    // GhostVPN access keys (Outline ss://, VLESS, VMess). The key material is
+    // the user's own; the server stores it so their devices share the list.
+    vpnKeys: defineTable({
+      userId: v.id("users"),
+      kind: v.string(), // "ss" | "vless" | "vmess"
+      name: v.string(),
+      host: v.string(),
+      port: v.number(),
+      method: v.optional(v.string()),
+      raw: v.string(), // full original URI for import into native clients
+      source: v.optional(v.string()), // "paste" | subscription URL
+      createdAt: v.number(),
+    }).index("by_user", ["userId", "createdAt"]),
   },
   {
     schemaValidation: false,
