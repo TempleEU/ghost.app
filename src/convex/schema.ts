@@ -34,8 +34,26 @@ const schema = defineSchema(
       // GhostChat E2E identity (v1)
       handle: v.optional(v.string()), // public chat handle, e.g. ghost-7f3a9c
       publicKeyJwk: v.optional(v.string()), // ECDH P-256 public key (JSON JWK)
+
+      // Profile settings
+      displayName: v.optional(v.string()),
+      avatar: v.optional(v.string()), // data URL (resized client-side, <= ~20KB)
+
+      // Message storage: when false, chats are NOT backed up to the cloud
+      // (history stays on-device); when true, ciphertext is backed up.
+      secureStorage: v.optional(v.boolean()),
     }).index("email", ["email"]) // index for the email. do not remove or modify
       .index("handle", ["handle"]),
+
+    // Security alerts: devices currently logged into end-to-end encrypted chats.
+    devices: defineTable({
+      userId: v.id("users"),
+      label: v.string(), // e.g. "Windows · Chrome 126"
+      keyFingerprint: v.string(), // SHA-256 of the device's identity public key
+      firstSeenAt: v.number(),
+      lastSeenAt: v.number(),
+      revoked: v.optional(v.boolean()),
+    }).index("by_user", ["userId", "lastSeenAt"]),
 
     // GhostChat v1: conversations with per-member wrapped keys (server never
     // sees plaintext or unwrapped keys).

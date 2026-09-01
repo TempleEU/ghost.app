@@ -33,7 +33,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, Ghost, Lock, Loader2, Send, Timer, UserPlus } from "lucide-react";
+import { SettingsDialog } from "@/components/SettingsDialog";
+import { publicKeyFingerprint } from "@/lib/crypto";
+import { ArrowLeft, Ghost, Lock, Loader2, Send, Settings, Timer, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Identity = { userId: string; handle: string; publicKeyJwk: string };
@@ -124,6 +126,43 @@ export default function Chat() {
       onSignOut={signOut}
     />
   );
+}
+
+// ---------------------------------------------------------------------------
+// Device registration (security alerts) — fingerprint of my public key
+// ---------------------------------------------------------------------------
+
+function useDeviceRegistration(privateKeyJwk: string | null, publicKeyJwk: string | null) {
+  const touchDevice = useMutation(api.settings.touchDevice);
+  useEffect(() => {
+    if (!privateKeyJwk || !publicKeyJwk) return;
+    (async () => {
+      const fp = await publicKeyFingerprint(publicKeyJwk);
+      try {
+        await touchDevice({ label: deviceLabel(), keyFingerprint: fp });
+      } catch (_) {
+        // Non-fatal: security-alert log is best-effort.
+      }
+    })();
+  }, [privateKeyJwk, publicKeyJwk, touchDevice]);
+}
+
+function deviceLabel(): string {
+  const ua = navigator.userAgent;
+  const os =
+    /Windows/.test(ua) ? "Windows"
+    : /Mac OS X/.test(ua) ? "macOS"
+    : /Android/.test(ua) ? "Android"
+    : /iPhone|iPad/.test(ua) ? "iOS"
+    : /Linux/.test(ua) ? "Linux"
+    : "Unknown OS";
+  const browser =
+    /Edg\//.test(ua) ? "Edge"
+    : /Chrome\//.test(ua) ? "Chrome"
+    : /Firefox\//.test(ua) ? "Firefox"
+    : /Safari\//.test(ua) ? "Safari"
+    : "Browser";
+  return `${os} · ${browser}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -320,6 +359,9 @@ function ChatWorkspace({
   // Decrypted conversation keys, cached per conversation.
   const [convKeys, setConvKeys] = useState<Map<string, CryptoKey>>(new Map());
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useDeviceRegistration(privateKeyJwk, me.publicKeyJwk);
 
   const unwrapKey = useCallback(
     async (conv: Conversation): Promise<CryptoKey | null> => {
@@ -379,11 +421,21 @@ function ChatWorkspace({
               <span className="text-xs text-muted-foreground">{me.handle}</span>
             </div>
           </div>
-          <NewConversationDialog
-            me={me}
-            privateKeyJwk={privateKeyJwk}
-            onCreated={onSelectConv}
-          />
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              title="Settings"
+              onClick={() => setSettingsOpen(true)}
+            >
+              <Settings className="size-4" />
+            </Button>
+            <NewConversationDialog
+              me={me}
+              privateKeyJwk={privateKeyJwk}
+              onCreated={onSelectConv}
+            />
+          </div>
         </header>
         <div className="flex-1 overflow-y-auto">
           {conversationsLoading && (
@@ -426,6 +478,12 @@ function ChatWorkspace({
 
       {/* Chat area */}
       <section className="flex flex-1 flex-col">
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          handle={me.handle}
+          publicKeyJwk={me.publicKeyJwk}
+        />
         {keyError && <p className="p-4 text-sm text-destructive">{keyError}</p>}
         {selectedConv ? (
           <ChatView

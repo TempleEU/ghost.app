@@ -185,6 +185,24 @@ export function hasStoredIdentity(): boolean {
   return localStorage.getItem(STORE_KEY) !== null;
 }
 
+// ----------------------------------------------------------- key verification
+
+/**
+ * Short human-readable fingerprint of a public key (for "Verify keys").
+ * Two members compare these out-of-band; equal fingerprints mean nobody
+ * swapped the keys in transit (no MITM).
+ */
+export async function publicKeyFingerprint(publicKeyJwk: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(publicKeyJwk),
+  );
+  return Array.from(new Uint8Array(digest.slice(0, 8)))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("-")
+    .toUpperCase();
+}
+
 // ----------------------------------------------------------- message crypto
 
 /** Generate a fresh 256-bit conversation key. */
