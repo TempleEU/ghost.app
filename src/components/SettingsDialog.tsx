@@ -13,6 +13,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -453,6 +460,126 @@ function VerifyKeysTab({
       {conversations?.length === 0 && (
         <p className="text-xs text-muted-foreground">No conversations yet.</p>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GhostVPN — connection preferences (no external VPN API in catalog yet)
+// ---------------------------------------------------------------------------
+
+const VPN_SERVERS = [
+  { id: "auto", label: "Fastest available (auto)", country: "Auto" },
+  { id: "us-east", label: "US East · Ashburn", country: "US" },
+  { id: "us-west", label: "US West · Los Angeles", country: "US" },
+  { id: "eu-de", label: "Europe · Frankfurt", country: "DE" },
+  { id: "eu-nl", label: "Europe · Amsterdam", country: "NL" },
+  { id: "eu-uk", label: "Europe · London", country: "UK" },
+  { id: "sa-br", label: "South America · São Paulo", country: "BR" },
+  { id: "ap-jp", label: "Asia Pacific · Tokyo", country: "JP" },
+  { id: "ap-sg", label: "Asia Pacific · Singapore", country: "SG" },
+];
+
+function GhostVpnTab() {
+  const user = useQuery(api.users.currentUser);
+  const setVpn = useMutation(api.settings.setVpnSettings);
+  const [busy, setBusy] = useState(false);
+  const [apiUrl, setApiUrl] = useState("");
+  const [apiSaved, setApiSaved] = useState(false);
+  const loaded = useRef(false);
+
+  useEffect(() => {
+    if (user && !loaded.current) {
+      loaded.current = true;
+      setApiUrl(user.vpnPrivateApiUrl ?? "");
+    }
+  }, [user]);
+
+  const enabled = user?.vpnEnabled ?? false;
+  const mode = user?.vpnMode ?? "fastest";
+  const server = user?.vpnServer ?? "auto";
+
+  const patch = async (p: Record<string, unknown>) => {
+    setBusy(true);
+    try {
+      await setVpn(p);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-3">
+        <div>
+          <p className="text-sm font-medium">GhostVPN Service</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            Route GhostChat traffic through an encrypted tunnel. No time,
+            traffic or bandwidth limits.
+          </p>
+        </div>
+        <Switch
+          checked={enabled}
+          disabled={busy || user === undefined}
+          onCheckedChange={(v) => patch({ enabled: v })}
+        />
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>Server selection</Label>
+        <Select
+          value={mode === "fastest" ? "fastest" : server}
+          onValueChange={(v) =>
+            patch(v === "fastest" ? { mode: "fastest", server: "auto" } : { mode: "manual", server: v })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Choose a server" />
+          </SelectTrigger>
+          <SelectContent>
+            {VPN_SERVERS.map((s) => (
+              <SelectItem key={s.id} value={s.id}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {enabled && mode === "fastest" && (
+          <p className="text-xs text-muted-foreground">
+            ⚡ Fastest-server mode: connects to the lowest-latency server.
+          </p>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">Private VPN API (optional)</p>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Point GhostVPN at your own VPN provider's API endpoint (e.g. a
+          self-hosted WireGuard/OpenVPN manager). Leave empty to use the
+          built-in server list.
+        </p>
+        <div className="flex items-center gap-2">
+          <Input
+            value={apiUrl}
+            onChange={(e) => {
+              setApiUrl(e.target.value);
+              setApiSaved(false);
+            }}
+            placeholder="https://vpn.example.com/api"
+          />
+          <Button
+            size="sm"
+            disabled={busy}
+            onClick={async () => {
+              await patch({ privateApiUrl: apiUrl.trim() || undefined });
+              setApiSaved(true);
+            }}
+          >
+            Apply
+          </Button>
+        </div>
+        {apiSaved && <p className="text-xs text-muted-foreground">Saved.</p>}
+      </div>
     </div>
   );
 }

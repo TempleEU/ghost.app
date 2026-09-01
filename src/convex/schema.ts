@@ -42,6 +42,12 @@ const schema = defineSchema(
       // Message storage: when false, chats are NOT backed up to the cloud
       // (history stays on-device); when true, ciphertext is backed up.
       secureStorage: v.optional(v.boolean()),
+
+      // GhostVPN settings (client-side connection preferences).
+      vpnEnabled: v.optional(v.boolean()),
+      vpnMode: v.optional(v.string()), // "fastest" | "manual"
+      vpnServer: v.optional(v.string()), // manual server id
+      vpnPrivateApiUrl: v.optional(v.string()), // optional private VPN API endpoint
     }).index("email", ["email"]) // index for the email. do not remove or modify
       .index("handle", ["handle"]),
 
@@ -89,7 +95,25 @@ const schema = defineSchema(
       // Disappearing messages: epoch ms after which clients hide the message.
       // Enforcement is client-side; server cleanup is lazy.
       expiresAt: v.optional(v.number()),
+      // Reply threading: parent message id.
+      replyToId: v.optional(v.id("messages")),
+      // Reactions: emoji -> list of user ids who reacted.
+      reactions: v.optional(v.record(v.string(), v.array(v.id("users")))),
     }).index("by_conversation", ["conversationId", "createdAt"]),
+
+    // Blocking & reporting (privacy & safety controls).
+    blocks: defineTable({
+      blockerId: v.id("users"),
+      blockedId: v.id("users"),
+      createdAt: v.number(),
+    }).index("by_blocker", ["blockerId"]),
+
+    reports: defineTable({
+      reporterId: v.id("users"),
+      reportedHandle: v.string(), // handle snapshot; reported user may have no account
+      reason: v.string(),
+      createdAt: v.number(),
+    }).index("by_reporter", ["reporterId"]),
   },
   {
     schemaValidation: false,

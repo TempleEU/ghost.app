@@ -245,6 +245,170 @@ export const listMessages = query({
         iv: m.iv,
         createdAt: m.createdAt,
         expiresAt: m.expiresAt,
+        replyToId: m.replyToId,
+        reactions: m.reactions,
       }));
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Reactions & replies
+// ---------------------------------------------------------------------------
+
+/** Toggle an emoji reaction on a message (member-only). */
+export const toggleReaction = mutation({
+  args: {
+    messageId: v.id("messages"),
+    emoji: v.string(),
+  },
+  handler: async (ctx, { messageId, emoji }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+
+    const msg = await ctx.db.get(messageId);
+    if (msg === null) throw new Error("Message not found");
+    const conv = await ctx.db.get(msg.conversationId);
+    if (conv === null || !conv.members.some((m) => m.userId === userId)) {
+      throw new Error("Not a member of this conversation");
+    }
+
+    const reactions = { ...(msg.reactions ?? {}) };
+    const current = reactions[emoji] ?? [];
+    if (current.includes(userId)) {
+      const next = current.filter((id) => id !== userId);
+      if (next.length === 0) delete reactions[emoji];
+      else reactions[emoji] = next;
+    } else {
+      reactions[emoji] = [...current, userId];
+    }
+    await ctx.db.patch(messageId, { reactions });
+  },
+});
+
+/**
+ * Send a reply: same as sendMessage but carries the parent id. The reply
+ * body is encrypted like any other message; the thread link is public.
+ */
+export const sendReply = mutation({
+  args: {
+    conversationId: v.id("conversations"),
+    replyToId: v.id("messages"),
+    ciphertext: v.string(),
+    iv: v.string(),
+    expiresAt: v.optional(v.number()),
+  },
+  handler: async (ctx, { conversationId, replyToId, ciphertext, iv, expiresAt }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+
+    const conv = await ctx.db.get(conversationId);
+    if (conv === null) throw new Error("Conversation not found");
+    if (!conv.members.some((m) => m.userId === userId)) {
+      throw new Error("Not a member of this conversation");
+    }
+    const parent = await ctx.db.get(replyToId);
+    if (parent === null || parent.conversationId !== conversationId) {
+      throw new Error("Parent message not found");
+    }
+
+    const now = Date.now();
+    const id = await ctx.db.insert("messages", {
+      conversationId,
+      senderId: userId,
+      ciphertext,
+      iv,
+      createdAt: now,
+      expiresAt,
+      replyToId,
+    });
+    await ctx.db.patch(conversationId, { lastMessageAt: now });
+    return id;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Blocking & reporting
+// ---------------------------------------------------------------------------
+
+/** Block a handle (privacy & safety). Messages/conversations are hidden client-side. */
+export const blockHandle = mutation({
+  args: { handle: v.string() },
+  handler: async (ctx, { handle }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    const target = await ctx.db
+      .query("users")
+      .withIndex("handle", (q) => q.eq("handle", handle))
+      .first();
+    if (target === null || target._id === userId) {
+      throw new Error("Cannot block this handle");
+    }
+    const existing = await ctx.db
+      .query("blocks")
+      .withIndex("by_blocker", (q) => q.eq("blockerId", userId))
+      .collect();
+    if (existing.some((b) => b.blockedId === target._id)) return;
+    await ctx.db.insert("blocks", {
+      blockerId: userId,
+      blockedId: target._id,
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const unblockHandle = mutation({
+  args: { handle: v.string() },
+  handler: async (ctx, { handle }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    const target = await ctx.db
+      .query("users")
+      .withIndex("handle", (q) => q.eq("handle", handle))
+      .first();
+    if (target === null) return;
+    const existing = await ctx.db
+      .query("blocks")
+      .withIndex("by_blocker", (q) => q.eq("blockerId", userId))
+      .collect();
+    for (const b of existing) {
+      if (b.blockedId === target._id) await ctx.db.delete(b._id);
+    }
+  },
+});
+
+/** Handles the current user has blocked. */
+export const listBlocked = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) return [];
+    const blocks = await ctx.db
+      .query("blocks")
+      .withIndex("by_blocker", (q) => q.eq("blockerId", userId))
+      .collect();
+    const out: { handle: string; blockedId: string }[] = [];
+    for (const b of blocks) {
+      const u = await ctx.db.get(b.blockedId);
+      if (u?.handle) out.push({ handle: u.handle, blockedId: b.blockedId });
+    }
+    return out;
+  },
+});
+
+/** Report a handle with a reason. */
+export const reportHandle = mutation({
+  args: {
+    handle: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, { handle, reason }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    await ctx.db.insert("reports", {
+      reporterId: userId,
+      reportedHandle: handle,
+      reason,
+      createdAt: Date.now(),
+    });
   },
 });

@@ -24,6 +24,29 @@ export const updateProfile = mutation({
 });
 
 /**
+ * GhostVPN settings (Menu > Settings > GhostVPN Service).
+ */
+export const setVpnSettings = mutation({
+  args: {
+    enabled: v.optional(v.boolean()),
+    mode: v.optional(v.string()), // "fastest" | "manual"
+    server: v.optional(v.string()), // server id ("auto" for fastest)
+    privateApiUrl: v.optional(v.string()), // optional private VPN API endpoint
+  },
+  handler: async (ctx, { enabled, mode, server, privateApiUrl }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    const patch: Record<string, unknown> = {};
+    if (enabled !== undefined) patch.vpnEnabled = enabled;
+    if (mode !== undefined) patch.vpnMode = mode;
+    if (server !== undefined) patch.vpnServer = server;
+    if (privateApiUrl !== undefined) patch.vpnPrivateApiUrl = privateApiUrl;
+    if (Object.keys(patch).length === 0) return;
+    await ctx.db.patch(userId, patch);
+  },
+});
+
+/**
  * Message storage toggle (Menu > Settings > Privacy & safety > End-to-end
  * encrypted chats > Secure storage). When off, ciphertext history is not
  * backed up to the cloud and stays on-device.

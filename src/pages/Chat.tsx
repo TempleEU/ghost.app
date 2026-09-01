@@ -57,6 +57,8 @@ type ChatMessage = {
   iv: string;
   createdAt: number;
   expiresAt?: number;
+  replyToId?: Id<"messages">;
+  reactions?: Record<string, string[]>;
 };
 
 const DISAPPEARING_OPTIONS = [
@@ -523,13 +525,20 @@ function ChatView({
     conversationId: conv._id,
   }) as ChatMessage[] | undefined;
   const send = useMutation(api.chat.sendMessage);
+  const sendReply = useMutation(api.chat.sendReply);
+  const toggleReaction = useMutation(api.chat.toggleReaction);
 
   const [text, setText] = useState("");
   const [disappearing, setDisappearing] = useState("off");
   const [busy, setBusy] = useState(false);
+  const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
   const [plaintexts, setPlaintexts] = useState<Map<string, string>>(new Map());
   const bottomRef = useRef<HTMLDivElement>(null);
   const other = conv.members.find((m) => m.userId !== me.userId);
+  const memberHandle = useCallback(
+    (userId: string) => conv.members.find((m) => m.userId === userId)?.handle ?? "ghost",
+    [conv.members],
+  );
 
   // Decrypt messages as they arrive.
   useEffect(() => {
@@ -563,12 +572,19 @@ function ChatView({
     try {
       const { ciphertext, iv } = await encryptMessage(convKey, body);
       const ms = DISAPPEARING_OPTIONS.find((o) => o.value === disappearing)?.ms;
-      await send({
-        conversationId: conv._id,
-        ciphertext,
-        iv,
-        expiresAt: ms ? Date.now() + ms : undefined,
-      });
+      const expiresAt = ms ? Date.now() + ms : undefined;
+      if (replyTo) {
+        await sendReply({
+          conversationId: conv._id,
+          replyToId: replyTo._id,
+          ciphertext,
+          iv,
+          expiresAt,
+        });
+        setReplyTo(null);
+      } else {
+        await send({ conversationId: conv._id, ciphertext, iv, expiresAt });
+      }
       setText("");
     } finally {
       setBusy(false);
