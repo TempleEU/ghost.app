@@ -58,8 +58,11 @@ const schema = defineSchema(
       appMode: v.optional(v.boolean()), // phone-style app frame on/off
 
       // Phone verification (Twilio Verify)
-      phoneNumber: v.optional(v.string()), // E.164, e.g. +46701234567
+      phoneE164: v.optional(v.string()), // E.164, e.g. +46701234567
       phoneVerifiedAt: v.optional(v.number()), // epoch ms when verified
+      // Dev-only OTP fallback storage (never used when Twilio is configured).
+      devOtpCode: v.optional(v.string()),
+      devOtpAt: v.optional(v.number()),
 
       // GhostVPN Server Hub — Outline management API connection
       vpnServerApiUrl: v.optional(v.string()), // e.g. https://1.2.3.4:port/xxxxx
@@ -180,6 +183,22 @@ const schema = defineSchema(
       deviceTimestamp: v.optional(v.number()),
       receivedAt: v.number(),
     }).index("by_user", ["userId", "receivedAt"]),
+
+    // One-time verification attempts (Twilio Verify); enables rate limiting
+    // and audit without storing OTP codes (Twilio holds those).
+    phoneVerifications: defineTable({
+      userId: v.id("users"),
+      phoneE164: v.string(),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("verified"),
+        v.literal("failed"),
+      ),
+      provider: v.literal("twilio"),
+      channel: v.literal("sms"),
+      createdAt: v.number(),
+      verifiedAt: v.optional(v.number()),
+    }).index("by_user", ["userId", "createdAt"]),
 
     // Fake GPS Location — saved favorite spots.
     fakeGpsFavorites: defineTable({

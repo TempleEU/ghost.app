@@ -51,7 +51,21 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useAppMode } from "@/hooks/use-app-mode";
 import { parseKeyBlob, type ParsedVpnKey } from "@/lib/vpn-keys";
-import { Server, ServerCog, MessageSquare } from "lucide-react";
+import {
+  Server,
+  ServerCog,
+  MessageSquare,
+  Phone,
+  LayoutGrid,
+  EyeOff,
+  BadgeCheck,
+  ShieldOff,
+  Camera,
+  Mic,
+  MapPin,
+  Users,
+  Bell,
+} from "lucide-react";
 
 type DeviceInfo = {
   _id: string;
@@ -122,6 +136,15 @@ export function SettingsDialog({
             <TabsTrigger value="smsgw" className="flex-1 gap-1.5">
               <MessageSquare className="size-3.5" /> SMS
             </TabsTrigger>
+            <TabsTrigger value="phone" className="flex-1 gap-1.5">
+              <Phone className="size-3.5" /> Phone
+            </TabsTrigger>
+            <TabsTrigger value="apps" className="flex-1 gap-1.5">
+              <LayoutGrid className="size-3.5" /> Apps
+            </TabsTrigger>
+            <TabsTrigger value="privacy" className="flex-1 gap-1.5">
+              <EyeOff className="size-3.5" /> Privacy
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="profile">
             <ProfileTab />
@@ -146,6 +169,15 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="smsgw">
             <SmsGatewayTab />
+          </TabsContent>
+          <TabsContent value="phone">
+            <PhoneTab />
+          </TabsContent>
+          <TabsContent value="apps">
+            <AppsPermissionsTab />
+          </TabsContent>
+          <TabsContent value="privacy">
+            <PrivacyManagerTab />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -1619,6 +1651,436 @@ function SmsGatewayTab() {
           <li>Text the phone — the message appears in the inbox below within seconds.</li>
         </ol>
       </details>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Phone tab — GhostChat phone verification (Twilio Verify)
+// ---------------------------------------------------------------------------
+
+type PhoneStatus = { phoneE164: string | null; phoneVerifiedAt: number | null };
+
+function PhoneTab() {
+  const status = useQuery(api.phoneVerifyData.getStatus) as PhoneStatus | undefined;
+  const unlink = useMutation(api.phoneVerifyData.unlinkPhone);
+  const start = useAction(api.phoneVerify.startVerification);
+  const check = useAction(api.phoneVerify.checkVerification);
+
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<"idle" | "awaiting-code" | "dev-fallback">("idle");
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const verified = (status?.phoneVerifiedAt ?? null) !== null;
+
+  const handleStart = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await start({ phone: phone.trim() });
+      if (res.mode === "dev-fallback") {
+        setDevCode(res.devCode);
+        setMode("dev-fallback");
+      } else {
+        setMode("awaiting-code");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send code");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCheck = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await check({ phone: phone.trim(), code });
+      setDone(true);
+      setMode("idle");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Verification failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      {/* Status */}
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 p-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Phone number</p>
+          <p className="text-xs text-muted-foreground">
+            {status === undefined
+              ? "Loading…"
+              : verified
+                ? status!.phoneE164
+                : "Not verified"}
+          </p>
+        </div>
+        {verified ? (
+          <>
+            <span className="flex items-center gap-1 rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600">
+              <BadgeCheck className="size-3" /> verified
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                try {
+                  await unlink();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              Unlink
+            </Button>
+          </>
+        ) : (
+          <span className="flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+            <ShieldOff className="size-3" /> unverified
+          </span>
+        )}
+      </div>
+
+      {!verified && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+          <p className="text-sm font-medium">Verify your number</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            One-time code via SMS. Standard rates may apply. Used for account
+            recovery and contact discovery — never shared or sold.
+          </p>
+          {mode === "idle" && (
+            <>
+              <Input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+46 70 123 45 67"
+                inputMode="tel"
+              />
+              <Button
+                onClick={handleStart}
+                disabled={busy || phone.trim().length < 7}
+              >
+                {busy ? <Loader2 className="size-4 animate-spin" /> : <Phone className="size-4" />}
+                Send code
+              </Button>
+            </>
+          )}
+          {(mode === "awaiting-code" || mode === "dev-fallback") && (
+            <>
+              {mode === "dev-fallback" && devCode && (
+                <div className="rounded border border-amber-500/40 bg-amber-500/5 p-2">
+                  <p className="text-xs font-medium text-amber-600">
+                    DEV MODE — no Twilio keys configured. Code shown here
+                    instead of SMS:
+                  </p>
+                  <code className="mt-1 block font-mono text-lg font-bold tracking-widest">{devCode}</code>
+                </div>
+              )}
+              {mode === "awaiting-code" && (
+                <p className="text-xs text-muted-foreground">
+                  Code sent to {phone}. Check your messages.
+                </p>
+              )}
+              <Input
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="6-digit code"
+                inputMode="numeric"
+                maxLength={8}
+              />
+              <div className="flex items-center gap-2">
+                <Button onClick={handleCheck} disabled={busy || code.length < 4}>
+                  {busy ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
+                  Verify
+                </Button>
+                <Button variant="ghost" onClick={() => { setMode("idle"); setCode(""); }}>
+                  Back
+                </Button>
+              </div>
+            </>
+          )}
+          {done && <p className="text-xs text-emerald-600">Phone verified.</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+        </div>
+      )}
+
+      {/* Twilio setup (paste-keys pattern) */}
+      {!verified && (
+        <details className="rounded-lg border border-border/60 p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Enable real SMS delivery (Twilio keys)
+          </summary>
+          <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-4 text-xs leading-5 text-muted-foreground">
+            <li>
+              Create a Twilio account{' '}
+              <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+                twilio.com/try-twilio
+              </a>{' '}
+              (trial includes free credit).
+            </li>
+            <li>Console → Verify → Services → create one, copy its SID.</li>
+            <li>
+              Add these three keys in the project's Keys/API keys panel:
+              <code className="mt-1 block rounded bg-muted px-2 py-1 font-mono text-[10px]">
+                TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN · TWILIO_VERIFY_SERVICE_SID
+              </code>
+            </li>
+            <li>Restart — verification switches from dev mode to real SMS automatically.</li>
+          </ol>
+        </details>
+      )}
+
+      {/* Second number guidance */}
+      <div className="rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">Need a second number?</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          GhostChat verifies your existing number — it does not mint new ones.
+          For a free personal second number, these are the legitimate options:
+        </p>
+        <ul className="mt-2 flex list-disc flex-col gap-1 pl-4 text-xs leading-5 text-muted-foreground">
+          <li><span className="font-medium text-foreground">Google Voice</span> — free US number (requires a US number to set up).</li>
+          <li><span className="font-medium text-foreground">TextNow / TextFree</span> — free US/CA numbers over Wi-Fi, ad-supported.</li>
+          <li><span className="font-medium text-foreground">MySudo / Hushed</span> — paid, but real persistent numbers with strong privacy posture.</li>
+        </ul>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Disposable OTP-rental services ("receive codes for WhatsApp/Revolut")
+          are not supported — they violate platform terms and often enable fraud.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Apps > Permissions — per-feature access toggles for GhostChat itself.
+// These control what the app can use on THIS device (camera, mic, location,
+// contacts). Browser permissions are requested lazily only when a toggle is
+// on; toggles persist locally and gate the relevant feature code paths.
+// ---------------------------------------------------------------------------
+
+type AppPermission = {
+  id: string;
+  label: string;
+  description: string;
+  icon: typeof Camera;
+};
+
+const APP_PERMISSIONS: AppPermission[] = [
+  { id: "camera", label: "Camera", description: "Scan contact QR codes, attach photos", icon: Camera },
+  { id: "microphone", label: "Microphone", description: "Voice messages and encrypted calls", icon: Mic },
+  { id: "location", label: "Location", description: "Optional: share live location in chats", icon: MapPin },
+  { id: "contacts", label: "Contacts", description: "Find friends by phone number (hashed, never uploaded)", icon: Users },
+  { id: "notifications", label: "Notifications", description: "Privacy-focused message alerts", icon: Bell },
+];
+
+const PERMS_KEY = "ghostchat-permissions";
+
+function readPerms(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(PERMS_KEY) ?? "{}") as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function AppsPermissionsTab() {
+  const [perms, setPerms] = useState<Record<string, boolean>>(readPerms);
+  const [status, setStatus] = useState<Record<string, string>>({});
+
+  const toggle = async (p: AppPermission, on: boolean) => {
+    const next = { ...perms, [p.id]: on };
+    setPerms(next);
+    localStorage.setItem(PERMS_KEY, JSON.stringify(next));
+
+    // Request the underlying browser permission when enabling (except
+    // notifications, which uses its own API).
+    if (on && "permissions" in navigator) {
+      try {
+        const nameMap: Record<string, PermissionName> = {
+          camera: "camera",
+          microphone: "microphone",
+          location: "geolocation",
+        };
+        const name = nameMap[p.id];
+        if (name === "geolocation") {
+          navigator.geolocation.getCurrentPosition(() => setStatus((s) => ({ ...s, [p.id]: "granted" })), () => setStatus((s) => ({ ...s, [p.id]: "denied" })));
+          return;
+        }
+        if (p.id === "notifications") {
+          const res = await Notification.requestPermission();
+          setStatus((s) => ({ ...s, [p.id]: res }));
+          return;
+        }
+        if (name) {
+          const res = await navigator.permissions.query({ name });
+          setStatus((s) => ({ ...s, [p.id]: res.state }));
+        }
+      } catch {
+        // Some browsers restrict querying certain permissions — fine.
+        setStatus((s) => ({ ...s, [p.id]: "prompt" }));
+      }
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <p className="text-xs leading-5 text-muted-foreground">
+        GhostChat requests access to your device's features only when a feature
+        needs it. Toggle access on or off here — turning something off makes
+        the app skip it entirely (no background collection).
+      </p>
+      <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">GhostChat · device access</p>
+        {APP_PERMISSIONS.map((p) => {
+          const Icon = p.icon;
+          return (
+            <div key={p.id} className="flex items-center justify-between gap-3 rounded border border-border/40 px-2 py-2">
+              <div className="flex min-w-0 items-start gap-2">
+                <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 text-xs font-medium">
+                    {p.label}
+                    {status[p.id] && (
+                      <span className="rounded bg-muted px-1 text-[10px] text-muted-foreground">{status[p.id]}</span>
+                    )}
+                  </p>
+                  <p className="text-[10px] leading-4 text-muted-foreground">{p.description}</p>
+                </div>
+              </div>
+              <Switch
+                checked={perms[p.id] ?? false}
+                onCheckedChange={(v) => void toggle(p, v)}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Toggles are device-local (stored in this browser) and sync nothing.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Privacy > Permission manager — cross-feature overview of everything
+// GhostChat can touch on this device, with one-click disable-all.
+// ---------------------------------------------------------------------------
+
+function PrivacyManagerTab() {
+  const [perms, setPerms] = useState<Record<string, boolean>>(readPerms);
+  const [open, setOpen] = useState<string | null>(null);
+
+  const active = APP_PERMISSIONS.filter((p) => perms[p.id]);
+  const inactive = APP_PERMISSIONS.filter((p) => !perms[p.id]);
+
+  const disableAll = () => {
+    const allOff: Record<string, boolean> = {};
+    for (const p of APP_PERMISSIONS) allOff[p.id] = false;
+    setPerms(allOff);
+    localStorage.setItem(PERMS_KEY, JSON.stringify(allOff));
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <p className="text-xs leading-5 text-muted-foreground">
+        Everything GhostChat can access on this device, at a glance. Click a
+        permission to jump to its toggle in Apps.
+      </p>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">Access overview</p>
+          <Button size="sm" variant="outline" onClick={disableAll}>
+            <ShieldOff className="size-3.5" /> Disable all
+          </Button>
+        </div>
+
+        {active.length === 0 && inactive.length === APP_PERMISSIONS.length && (
+          <p className="text-xs text-muted-foreground">
+            All device access is off. GhostChat works with messaging only.
+          </p>
+        )}
+
+        {active.length > 0 && (
+          <>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Allowed</p>
+            {active.map((p) => {
+              const Icon = p.icon;
+              return (
+                <button
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded border border-emerald-500/30 px-2 py-1.5 text-left hover:bg-accent/50"
+                  onClick={() => setOpen(open === p.id ? null : p.id)}
+                >
+                  <span className="flex items-center gap-2 text-xs font-medium">
+                    <Icon className="size-3.5" /> {p.label}
+                  </span>
+                  <span className="text-[10px] text-emerald-600">on</span>
+                </button>
+              );
+            })}
+          </>
+        )}
+
+        {inactive.length > 0 && (
+          <>
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Blocked</p>
+            {inactive.map((p) => {
+              const Icon = p.icon;
+              return (
+                <button
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1.5 text-left hover:bg-accent/50"
+                  onClick={() => setOpen(open === p.id ? null : p.id)}
+                >
+                  <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <Icon className="size-3.5" /> {p.label}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">off</span>
+                </button>
+              );
+            })}
+          </>
+        )}
+
+        {open && (
+          <div className="rounded border border-border/40 bg-muted/40 p-2">
+            {(() => {
+              const p = APP_PERMISSIONS.find((x) => x.id === open)!;
+              return (
+                <>
+                  <p className="text-xs font-medium">{p.label}</p>
+                  <p className="mt-0.5 text-[10px] leading-4 text-muted-foreground">{p.description}</p>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    Manage: Settings → Apps → {p.label}
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">Data collection policy</p>
+        <ul className="mt-1 flex list-disc flex-col gap-1 pl-4 text-xs leading-5 text-muted-foreground">
+          <li>Message content: end-to-end encrypted; the server stores ciphertext only.</li>
+          <li>Contacts: hashed on-device for discovery; never uploaded in plaintext.</li>
+          <li>Location: only shared when you attach it to a message; never in background.</li>
+          <li>No analytics SDKs, no ad trackers, no third-party data sharing.</li>
+        </ul>
+      </div>
     </div>
   );
 }
