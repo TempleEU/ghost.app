@@ -1,142 +1,37 @@
-# VLY Integrations
+# Ghost.app integrations
 
-First-order integrations for AI, email, and payments with automatic usage billing through VLY integration keys.
+Ghost.app uses provider-neutral integrations. The web client never embeds AI provider secrets and does not expose a client-side AI credit meter.
 
-## Environment Variables
+## Ghost Web AI
 
-The following environment variables are automatically set during project creation:
+Ghost Web AI is the unified workspace for repository inspection, coding assistance, testing plans, reviews, design tasks and authorized automation.
 
-- `VLY_INTEGRATION_KEY`: Your unique integration key (format: `sk_*`)
-- `VLY_INTEGRATION_BASE_URL`: The base URL for the integration gateway (default: `https://integrations.freebuff.com/`)
+Configure an authorized AI gateway with:
 
-## Installation
+- `VITE_GHOST_AI_ENDPOINT`
 
-The `@vly-ai/integrations` package is already included in package.json.
+The gateway may be a local or self-hosted OpenAI-compatible service, including an authorized OmniRoute deployment. Provider terms, quotas and API authentication still apply; Ghost.app does not bypass paid limits, access controls or authentication.
 
-## Usage in Convex Actions
+## GitHub
 
-```typescript
-"use node";
+The browser can inspect public GitHub repositories through the GitHub REST API without storing credentials. Write operations should use an explicit OAuth/app flow with least-privilege scopes and server-side token handling. Never put a GitHub personal access token in Vite client environment variables.
 
-import { vly } from '../lib/vly-integrations';
-import { action } from "./_generated/server";
+Supported first workflow:
 
-export const generateAIResponse = action({
-  handler: async (ctx, args) => {
-    // AI Completions
-    const completion = await freebuff.com.completion({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are a helpful assistant.' },
-        { role: 'user', content: 'Hello!' }
-      ],
-      temperature: 0.7,
-      maxTokens: 150
-    });
-    
-    return completion;
-  }
-});
-```
+1. Enter a GitHub repository URL.
+2. Inspect repository metadata and root files.
+3. Give Ghost Web AI a task such as build, review, test, fix, explain or design.
+4. Send the resulting plan/code request to the configured authorized AI gateway.
+5. Apply Git changes only through an explicit, authenticated Git/GitHub action.
 
-## Available Features
+## Open-source policy
 
-### AI Integration
-```typescript
-// Create completion
-const completion = await freebuff.com.completion({
-  model: 'gpt-4o-mini', // or 'gpt-4o', 'claude-3-haiku', etc.
-  messages: [...],
-  temperature: 0.7,
-  maxTokens: 150
-});
+Potential upstream components are reviewed individually. Builder.io's repository is MIT licensed, OmniRoute is MIT licensed, `miuuyy/codex-chatgpt-web` is MIT licensed, and `OuterSpacee/free-ai-apis` is CC0. The Supercharged-AI-Dev-Tools repository itself warns that listed tools may have separate licenses and terms, so its entries are treated as a discovery index rather than automatically reusable code. Ghost.app must retain required notices and must not copy trademarks, proprietary assets or code outside the applicable license.
 
-// Stream completion
-await freebuff.com.streamCompletion(
-  request,
-  (chunk: string) => console.log(chunk)
-);
+## Free AI providers
 
-// Generate embeddings
-const embeddings = await freebuff.com.embeddings("Your text here");
-```
+A provider may offer a free tier, but "free" is not treated as unlimited or as permission to bypass authentication, quotas or billing. Ghost.app can support local models and self-hosted gateways where practical, which can avoid per-request vendor billing when the operator supplies the compute.
 
-### Email Integration
-```typescript
-// Send email
-const emailResult = await vly.email.send({
-  to: 'user@example.com',
-  subject: 'Welcome!',
-  html: '<h1>Welcome to our service!</h1>',
-  text: 'Welcome to our service!'
-});
+## Removed integration dependency
 
-// Send batch emails
-const batchResult = await vly.email.sendBatch([...emails]);
-```
-
-### Payments Integration
-```typescript
-// Create payment intent
-const paymentIntent = await vly.payments.createPaymentIntent({
-  amount: 2000, // $20.00 in cents
-  currency: 'usd',
-  description: 'Premium subscription',
-  customer: {
-    email: 'customer@example.com'
-  }
-});
-
-// Create subscription
-const subscription = await vly.payments.createSubscription({...});
-
-// Create checkout session
-const session = await vly.payments.createCheckoutSession({...});
-```
-
-## Error Handling
-
-All methods return an ApiResponse object:
-
-```typescript
-interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-  usage?: {
-    credits: number;
-    operation: string;
-  };
-}
-```
-
-Example error handling:
-
-```typescript
-const result = await freebuff.com.completion({ ... });
-
-if (result.success) {
-  console.log('Response:', result.data);
-  console.log('Credits used:', result.usage?.credits);
-} else {
-  console.error('Error:', result.error);
-}
-```
-
-## Important Notes
-
-1. The integration key (`VLY_INTEGRATION_KEY`) is automatically injected during project creation
-2. All API calls are automatically billed to your deployment based on usage
-3. Must be used in Convex actions with `"use node"` directive
-4. The integration key should never be exposed to the client
-
-## Checking Integration Status
-
-To verify the integration is properly configured:
-
-```typescript
-const hasIntegration = !!process.env.VLY_INTEGRATION_KEY;
-if (!hasIntegration) {
-  console.error("VLY integration key not found");
-}
-```
+The previous VLY/Freebuff integration documentation described automatic usage billing and credit consumption. That path is no longer the product architecture for Ghost Web AI. The Ghost Web AI client is provider-neutral and has no client-side credit counter.
