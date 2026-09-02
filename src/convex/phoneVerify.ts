@@ -3,7 +3,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import type { GenericActionCtx } from "convex/server";
+import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 // Internal helpers (rate limit, dev codes, mark-verified) live in
 // phoneVerifyData.ts — this file only holds the Node actions.
@@ -68,7 +68,7 @@ async function twilioRequest(
 
 /** Resolve live credentials: DB config (enabled) → env vars → null. */
 async function resolveLive(
-  ctx: GenericActionCtx<any>,
+  ctx: ActionCtx,
 ): Promise<{ accountSid: string; authToken: string; verifyServiceSid: string } | null> {
   const fromDb = await ctx.runQuery(internal.smsProviderData.resolveCreds, {});
   if (fromDb) return fromDb;

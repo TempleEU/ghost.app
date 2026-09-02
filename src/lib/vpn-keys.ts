@@ -37,13 +37,6 @@ function b64decode(input: string): string {
   );
 }
 
-function b64encode(input: string): string {
-  const bytes = new TextEncoder().encode(input);
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin);
-}
-
 function isHost(s: string): boolean {
   // IPv4, IPv6-in-brackets, or a hostname.
   return /^(\d{1,3}(\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]|[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*)$/.test(s);

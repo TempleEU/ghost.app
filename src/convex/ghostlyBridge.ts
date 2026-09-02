@@ -1,6 +1,6 @@
-"use node";
+// V8 runtime: fetch/Response/URL are available; no Node APIs used here.
+// (Convex only permits `action` functions in "use node" files, not httpActions.)
 
-import { v } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 

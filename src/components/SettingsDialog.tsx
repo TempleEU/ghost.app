@@ -52,7 +52,6 @@ import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useAppMode } from "@/hooks/use-app-mode";
 import { parseKeyBlob, type ParsedVpnKey } from "@/lib/vpn-keys";
 import {
-  Server,
   ServerCog,
   MessageSquare,
   Phone,

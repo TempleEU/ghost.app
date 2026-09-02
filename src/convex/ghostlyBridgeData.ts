@@ -52,6 +52,7 @@ export const createPairing = mutation({
     const pairingCode = randomHex(4).toUpperCase(); // 8 hex chars
     const id = await ctx.db.insert("companionDevices", {
       userId,
+      createdAt: Date.now(),
       label: label.trim() || "Ghostly device",
       platform,
       pairingCode,
