@@ -826,6 +826,62 @@ function GhostVpnTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Deployment guide — from zero to a live Outline server
+// ---------------------------------------------------------------------------
+
+const OUTLINE_INSTALL_CMD = "sudo bash -c \"$(wget -qO- https://raw.githubusercontent.com/Jigsaw-Code/outline-releases/master/server/install.sh)\"";
+
+function DeploymentGuide() {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <details className="rounded-lg border border-border/60 p-3">
+      <summary className="cursor-pointer text-sm font-medium">
+        Don't have a server yet? Deploy one (~10 min)
+      </summary>
+      <ol className="mt-2 flex list-decimal flex-col gap-2 pl-4 text-xs leading-5 text-muted-foreground">
+        <li>
+          Get any Linux box: a free-tier VPS (Oracle Cloud always-free, Google
+          Cloud free tier) or a ~$5 droplet (DigitalOcean, Hetzner).
+        </li>
+        <li>
+          SSH in and run the official Outline install script:
+          <div className="mt-1 flex items-start gap-1.5">
+            <code className="min-w-0 flex-1 break-all rounded bg-muted px-2 py-1.5 font-mono text-[10px]">
+              {OUTLINE_INSTALL_CMD}
+            </code>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              title="Copy install command"
+              onClick={async () => {
+                await navigator.clipboard.writeText(OUTLINE_INSTALL_CMD);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+            </Button>
+          </div>
+        </li>
+        <li>
+          The script prints a JSON block with{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[10px]">apiUrl</code> and{' '}
+          <code className="rounded bg-muted px-1 font-mono text-[10px]">certSha256</code>{' '}
+          — paste both into the form below, then Test &amp; save.
+        </li>
+        <li>
+          Install the Outline client on the device that will tunnel
+          (getoutline.org/get-started) — GhostChat creates the keys, the
+          client opens the tunnel.
+        </li>
+      </ol>
+    </details>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // GhostVPN Access Keys — import, validate, store and launch real Outline /
 // Shadowsocks / VLESS / VMess keys. The OS client (Outline, v2rayNG,
 // v2rayN, Shadowrocket) opens the tunnel; GhostChat manages the keys.
@@ -1179,6 +1235,8 @@ function ServerHubTab() {
         hub: create, rename and revoke real VPN access keys. Keys tunnel via
         the Outline client.
       </p>
+
+      <DeploymentGuide />
 
       {/* Connection form */}
       <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
