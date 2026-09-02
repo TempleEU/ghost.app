@@ -152,6 +152,31 @@ const schema = defineSchema(
       createdAt: v.number(),
     }).index("by_user", ["userId", "createdAt"]),
 
+    // SMS Gateway devices — phones running an SMS-gateway app that POSTs
+    // incoming SMS to GhostChat. One API key per device.
+    smsDevices: defineTable({
+      userId: v.id("users"),
+      label: v.string(), // e.g. "Pixel 8 — bedside phone"
+      apiKey: v.string(), // random hex, sent as x-ghostchat-key header
+      createdAt: v.number(),
+      lastSeenAt: v.optional(v.number()),
+      revoked: v.optional(v.boolean()),
+    })
+      .index("by_user", ["userId", "createdAt"])
+      .index("by_apiKey", ["apiKey"]),
+
+    // Ingested SMS messages from gateway devices. Payload matches the
+    // react-native-sms-gateway POST body: { msg, timestamp, phoneNumber, sender }
+    smsMessages: defineTable({
+      deviceId: v.id("smsDevices"),
+      userId: v.id("users"),
+      sender: v.string(),
+      body: v.string(),
+      phoneNumber: v.optional(v.string()), // gateway phone's own number
+      deviceTimestamp: v.optional(v.number()),
+      receivedAt: v.number(),
+    }).index("by_user", ["userId", "receivedAt"]),
+
     // Fake GPS Location — saved favorite spots.
     fakeGpsFavorites: defineTable({
       userId: v.id("users"),

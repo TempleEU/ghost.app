@@ -51,7 +51,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useAppMode } from "@/hooks/use-app-mode";
 import { parseKeyBlob, type ParsedVpnKey } from "@/lib/vpn-keys";
-import { Server, ServerCog } from "lucide-react";
+import { Server, ServerCog, MessageSquare } from "lucide-react";
 
 type DeviceInfo = {
   _id: string;
@@ -119,6 +119,9 @@ export function SettingsDialog({
             <TabsTrigger value="serverhub" className="flex-1 gap-1.5">
               <ServerCog className="size-3.5" /> Hub
             </TabsTrigger>
+            <TabsTrigger value="smsgw" className="flex-1 gap-1.5">
+              <MessageSquare className="size-3.5" /> SMS
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="profile">
             <ProfileTab />
@@ -140,6 +143,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="serverhub">
             <ServerHubTab />
+          </TabsContent>
+          <TabsContent value="smsgw">
+            <SmsGatewayTab />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -1387,6 +1393,232 @@ function ServerHubTab() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// SMS Gateway — receive SMS from Android phones running
+// react-native-sms-gateway (or any app POSTing the same JSON payload).
+// Each device gets an API key; the phone POSTs to the GhostChat webhook.
+// ---------------------------------------------------------------------------
+
+type SmsDevice = {
+  _id: string;
+  label: string;
+  apiKey: string;
+  createdAt: number;
+  lastSeenAt?: number;
+  revoked?: boolean;
+};
+
+type SmsMsg = {
+  _id: string;
+  sender: string;
+  body: string;
+  phoneNumber?: string;
+  deviceTimestamp?: number;
+  receivedAt: number;
+};
+
+function SmsGatewayTab() {
+  const devices = useQuery(api.smsGateway.listDevices) as SmsDevice[] | undefined;
+  const messages = useQuery(api.smsGateway.listMessages) as SmsMsg[] | undefined;
+  const createDevice = useMutation(api.smsGateway.createDevice);
+  const revokeDevice = useMutation(api.smsGateway.revokeDevice);
+  const deleteMessage = useMutation(api.smsGateway.deleteMessage);
+
+  const [label, setLabel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showKey, setShowKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const webhookUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/api/sms-gateway`;
+  // Convex deployments serve HTTP actions on the .convex.site domain.
+  const convexSite = import.meta.env.VITE_CONVEX_SITE_URL as string | undefined;
+  const effectiveWebhook = convexSite
+    ? `${convexSite}/api/sms-gateway`
+    : webhookUrl;
+
+  const handleCreate = async () => {
+    setBusy(true);
+    try {
+      const res = await createDevice({ label });
+      if (res) setShowKey(res.apiKey);
+      setLabel("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (text: string, id: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 1500);
+  };
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <p className="text-xs leading-5 text-muted-foreground">
+        Turn an Android phone into an SMS gateway with{' '}
+        <a
+          href="https://github.com/MahmoudY3c/react-native-sms-gateway"
+          target="_blank"
+          rel="noreferrer"
+          className="underline hover:text-foreground"
+        >
+          react-native-sms-gateway
+        </a>
+        . The phone forwards incoming SMS to GhostChat over HTTPS — read your
+        OTPs and texts from anywhere, on any device. iOS is not supported
+        (Apple exposes no SMS API).
+      </p>
+
+      {/* Webhook URL */}
+      <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">Webhook URL</p>
+        <div className="flex items-center gap-2">
+          <code className="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1.5 font-mono text-[10px]">
+            {effectiveWebhook}
+          </code>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 shrink-0"
+            title="Copy webhook URL"
+            onClick={() => copy(effectiveWebhook, "webhook")}
+          >
+            {copied === "webhook" ? <Check className="size-3 text-emerald-600" /> : <Copy className="size-3" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* Devices */}
+      <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">Gateway devices</p>
+        <div className="flex items-center gap-2">
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Device label (e.g. Pixel 8 — spare phone)"
+          />
+          <Button size="sm" disabled={busy} onClick={handleCreate}>
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+            Add
+          </Button>
+        </div>
+        {devices === undefined && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+        {devices?.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            No devices yet. Add one, then set the webhook URL + API key in the
+            gateway app's HTTP config.
+          </p>
+        )}
+        {devices?.map((d) => (
+          <div
+            key={d._id}
+            className="flex items-center justify-between gap-2 rounded border border-border/40 px-2 py-1.5"
+          >
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 truncate text-xs font-medium">
+                <Smartphone className="size-3 shrink-0 text-muted-foreground" />
+                {d.label}
+                {d.revoked && (
+                  <span className="rounded bg-destructive/10 px-1 text-[10px] text-destructive">revoked</span>
+                )}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {d.lastSeenAt ? `last seen ${timeAgo(d.lastSeenAt)}` : "never connected"}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                title="Show/copy API key"
+                onClick={() => copy(d.apiKey, d._id)}
+              >
+                {copied === d._id ? <Check className="size-3 text-emerald-600" /> : <KeyRound className="size-3" />}
+              </Button>
+              {!d.revoked && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  title="Revoke device"
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      await revokeDevice({ deviceId: d._id as never });
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+        {showKey && (
+          <div className="rounded border border-emerald-500/30 bg-emerald-500/5 p-2">
+            <p className="text-xs font-medium text-emerald-600">New device API key — copy now, shown once:</p>
+            <code className="mt-1 block break-all font-mono text-[10px]">{showKey}</code>
+            <Button size="sm" variant="outline" className="mt-1.5 gap-1" onClick={() => copy(showKey, "newkey")}>
+              {copied === "newkey" ? <Check className="size-3" /> : <Copy className="size-3" />} Copy key
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Inbox */}
+      <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+        <p className="text-sm font-medium">Inbox ({messages?.length ?? 0})</p>
+        {messages === undefined && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+        {messages?.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            No SMS received yet. On the gateway phone, set the webhook URL and
+            API key (HTTP config), enable the listener, then text that phone.
+          </p>
+        )}
+        {messages?.map((m) => (
+          <div
+            key={m._id}
+            className="flex items-start justify-between gap-2 rounded border border-border/40 px-2 py-1.5"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium">{m.sender}</p>
+              <p className="break-words text-xs text-muted-foreground">{m.body}</p>
+              <p className="text-[10px] text-muted-foreground">{timeAgo(m.receivedAt)}</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-6 shrink-0"
+              title="Delete"
+              onClick={async () => {
+                await deleteMessage({ messageId: m._id as never });
+              }}
+            >
+              <Trash2 className="size-3" />
+            </Button>
+          </div>
+        ))}
+      </div>
+
+      {/* Setup steps */}
+      <details className="rounded-lg border border-border/60 p-3">
+        <summary className="cursor-pointer text-sm font-medium">Gateway app setup steps</summary>
+        <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-4 text-xs leading-5 text-muted-foreground">
+          <li>Install the gateway app on a spare Android phone and grant SMS permissions.</li>
+          <li>Add a device above and copy its API key.</li>
+          <li>In the app's HTTP config, set URL to the webhook above and add header{' '}<code className="rounded bg-muted px-1 font-mono text-[10px]">x-ghostchat-key: &lt;API key&gt;</code></li>
+          <li>Set delivery type to HTTP, enable the background listener.</li>
+          <li>Text the phone — the message appears in the inbox below within seconds.</li>
+        </ol>
+      </details>
     </div>
   );
 }
