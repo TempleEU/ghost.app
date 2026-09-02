@@ -62,6 +62,15 @@ const schema = defineSchema(
       vpnServerCertSha256: v.optional(v.string()), // API cert fingerprint
       vpnServerName: v.optional(v.string()),
       vpnServerVerified: v.optional(v.boolean()), // connection test passed
+
+      // Fake GPS Location — spoofing configuration consumed by the native
+      // GhostChat companion (mock location on Android, Xcode/CoreLocation
+      // simulation on iOS/macOS, geolocation override on Windows browsers).
+      fakeGpsEnabled: v.optional(v.boolean()),
+      fakeGpsLat: v.optional(v.number()),
+      fakeGpsLng: v.optional(v.number()),
+      fakeGpsLabel: v.optional(v.string()), // e.g. "Tokyo Station"
+      fakeGpsJitter: v.optional(v.number()), // meters of accuracy variance
     }).index("email", ["email"]) // index for the email. do not remove or modify
       .index("handle", ["handle"]),
 
@@ -142,6 +151,16 @@ const schema = defineSchema(
       source: v.optional(v.string()), // "paste" | subscription URL | "outline:<serverId>"
       createdAt: v.number(),
     }).index("by_user", ["userId", "createdAt"]),
+
+    // Fake GPS Location — saved favorite spots.
+    fakeGpsFavorites: defineTable({
+      userId: v.id("users"),
+      label: v.string(),
+      lat: v.number(),
+      lng: v.number(),
+      createdAt: v.number(),
+    }).index("by_user", ["userId", "createdAt"]),
+
   },
   {
     schemaValidation: false,

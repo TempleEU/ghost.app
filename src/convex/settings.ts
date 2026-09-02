@@ -77,6 +77,34 @@ export const setDisplaySettings = mutation({
 });
 
 /**
+ * Fake GPS Location (Menu > Settings > GhostVPN > Fake GPS Location).
+ * Stores the spoofing configuration the native GhostChat companion consumes
+ * via Android mock location, Xcode/CoreLocation simulation on iOS/macOS, or
+ * a geolocation override on Windows browsers.
+ */
+export const setFakeGps = mutation({
+  args: {
+    enabled: v.optional(v.boolean()),
+    lat: v.optional(v.number()),
+    lng: v.optional(v.number()),
+    label: v.optional(v.string()),
+    jitter: v.optional(v.number()), // meters of accuracy variance
+  },
+  handler: async (ctx, { enabled, lat, lng, label, jitter }) => {
+    const userId = await getAuthUserId(ctx);
+    if (userId === null) throw new Error("Not signed in");
+    const patch: Record<string, unknown> = {};
+    if (enabled !== undefined) patch.fakeGpsEnabled = enabled;
+    if (lat !== undefined) patch.fakeGpsLat = lat;
+    if (lng !== undefined) patch.fakeGpsLng = lng;
+    if (label !== undefined) patch.fakeGpsLabel = label;
+    if (jitter !== undefined) patch.fakeGpsJitter = jitter;
+    if (Object.keys(patch).length === 0) return;
+    await ctx.db.patch(userId, patch);
+  },
+});
+
+/**
  * Message storage toggle (Menu > Settings > Privacy & safety > End-to-end
  * encrypted chats > Secure storage). When off, ciphertext history is not
  * backed up to the cloud and stays on-device.
