@@ -3,6 +3,7 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
+import type { GenericActionCtx } from "convex/server";
 import { internal } from "./_generated/api";
 // Internal helpers (rate limit, dev codes, mark-verified) live in
 // phoneVerifyData.ts — this file only holds the Node actions.
@@ -11,21 +12,21 @@ const data = internal.phoneVerifyData;
 // ---------------------------------------------------------------------------
 // Phone verification via Twilio Verify.
 //
-// Credentials come from the environment (Keys/API keys UI):
-//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE_SID
-//
-// When credentials are absent, the action runs in DEV FALLBACK mode: the
-// "OTP" is returned in the response so the flow can be tested end-to-end
-// without a Twilio account. This is explicitly marked and MUST NOT be
-// enabled in production (see isDevFallback flag below).
+// Credential resolution order:
+//   1. Live SMS config pasted in Settings (smsProvider table, enabled+validated)
+//   2. Environment variables (TWILIO_ACCOUNT_SID / AUTH_TOKEN / VERIFY_SERVICE_SID)
+//   3. Dev fallback — code returned in-band (no SMS), for testing only
 // ---------------------------------------------------------------------------
 
-// Dev fallback is only allowed when no Twilio credentials exist at all.
-const twilioConfigured = Boolean(
-  process.env.TWILIO_ACCOUNT_SID &&
-  process.env.TWILIO_AUTH_TOKEN &&
-  process.env.TWILIO_VERIFY_SERVICE_SID,
-);
+function envCreds() {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
+  if (accountSid && authToken && verifyServiceSid) {
+    return { accountSid, authToken, verifyServiceSid };
+  }
+  return null;
+}
 
 const MAX_ATTEMPTS_PER_HOUR = 5;
 
@@ -40,16 +41,13 @@ function normalizeE164(raw: string): string | null {
 }
 
 async function twilioRequest(
+  creds: { accountSid: string; authToken: string; verifyServiceSid: string },
   path: string,
   body: Record<string, string>,
 ): Promise<Record<string, unknown>> {
-  const sid = process.env.TWILIO_ACCOUNT_SID!;
-  const token = process.env.TWILIO_AUTH_TOKEN!;
-  const serviceSid = process.env.TWILIO_VERIFY_SERVICE_SID!;
-
-  const auth = Buffer.from(`${sid}:${token}`).toString("base64");
+  const auth = Buffer.from(`${creds.accountSid}:${creds.authToken}`).toString("base64");
   const res = await fetch(
-    `https://verify.twilio.com/v2/Services/${serviceSid}/${path}`,
+    `https://verify.twilio.com/v2/Services/${creds.verifyServiceSid}/${path}`,
     {
       method: "POST",
       headers: {
@@ -66,6 +64,15 @@ async function twilioRequest(
     throw new Error(`Twilio: ${msg}`);
   }
   return json;
+}
+
+/** Resolve live credentials: DB config (enabled) → env vars → null. */
+async function resolveLive(
+  ctx: GenericActionCtx<any>,
+): Promise<{ accountSid: string; authToken: string; verifyServiceSid: string } | null> {
+  const fromDb = await ctx.runQuery(internal.smsProviderData.resolveCreds, {});
+  if (fromDb) return fromDb;
+  return envCreds();
 }
 
 /** Request an OTP for the given phone number. */
@@ -94,10 +101,10 @@ export const startVerification = action({
       phoneE164: e164,
     });
 
-    if (!twilioConfigured) {
-      // DEV FALLBACK — no Twilio keys set. Return the code in-band so the
-      // flow is testable. Refuses to run if credentials ever appear.
-      if (twilioConfigured) throw new Error("unreachable");
+    const creds = await resolveLive(ctx);
+    if (!creds) {
+      // DEV FALLBACK — no live SMS configured. Return the code in-band so the
+      // flow is testable without a Twilio account.
       const devCode = String(Math.floor(100000 + Math.random() * 900000));
       await ctx.runMutation(data.setDevCode, {
         userId,
@@ -107,11 +114,11 @@ export const startVerification = action({
         mode: "dev-fallback" as const,
         devCode,
         message:
-          "DEV MODE: no Twilio keys configured. Use the code shown — it is NOT sent by SMS.",
+          "DEV MODE: live SMS not configured. Use the code shown — it is NOT sent by SMS.",
       };
     }
 
-    const res = await twilioRequest("verifications", {
+    const res = await twilioRequest(creds, "verifications", {
       to: e164,
       channel: "sms",
     });
@@ -138,7 +145,8 @@ export const checkVerification = action({
       throw new Error("Enter the 6-digit code from the SMS.");
     }
 
-    if (!twilioConfigured) {
+    const creds = await resolveLive(ctx);
+    if (!creds) {
       const ok = await ctx.runMutation(data.checkDevCode, {
         userId,
         code: cleanCode,
@@ -151,7 +159,7 @@ export const checkVerification = action({
       return { mode: "dev-fallback" as const, verified: true };
     }
 
-    const res = await twilioRequest("verification-check", {
+    const res = await twilioRequest(creds, "verification-check", {
       to: e164,
       code: cleanCode,
     });

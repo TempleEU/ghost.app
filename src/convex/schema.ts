@@ -200,6 +200,21 @@ const schema = defineSchema(
       verifiedAt: v.optional(v.number()),
     }).index("by_user", ["userId", "createdAt"]),
 
+    // Live SMS delivery — singleton provider config (at most one row).
+    // Secrets are stored server-side only; reads return masked values.
+    smsProviderConfig: defineTable({
+      singleton: v.boolean(), // always true; enforces one row
+      provider: v.literal("twilio"),
+      accountSid: v.string(),
+      authToken: v.string(), // secret
+      verifyServiceSid: v.string(),
+      senderPhoneNumber: v.optional(v.string()), // for direct sends (test SMS)
+      enabled: v.boolean(), // live delivery on/off
+      validatedAt: v.optional(v.number()), // last successful Twilio check
+      updatedBy: v.id("users"),
+      updatedAt: v.number(),
+    }),
+
     // Fake GPS Location — saved favorite spots.
     fakeGpsFavorites: defineTable({
       userId: v.id("users"),

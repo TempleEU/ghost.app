@@ -65,6 +65,7 @@ import {
   MapPin,
   Users,
   Bell,
+  Send,
 } from "lucide-react";
 
 type DeviceInfo = {
@@ -1814,31 +1815,9 @@ function PhoneTab() {
         </div>
       )}
 
-      {/* Twilio setup (paste-keys pattern) */}
-      {!verified && (
-        <details className="rounded-lg border border-border/60 p-3">
-          <summary className="cursor-pointer text-sm font-medium">
-            Enable real SMS delivery (Twilio keys)
-          </summary>
-          <ol className="mt-2 flex list-decimal flex-col gap-1.5 pl-4 text-xs leading-5 text-muted-foreground">
-            <li>
-              Create a Twilio account{' '}
-              <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
-                twilio.com/try-twilio
-              </a>{' '}
-              (trial includes free credit).
-            </li>
-            <li>Console → Verify → Services → create one, copy its SID.</li>
-            <li>
-              Add these three keys in the project's Keys/API keys panel:
-              <code className="mt-1 block rounded bg-muted px-2 py-1 font-mono text-[10px]">
-                TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN · TWILIO_VERIFY_SERVICE_SID
-              </code>
-            </li>
-            <li>Restart — verification switches from dev mode to real SMS automatically.</li>
-          </ol>
-        </details>
-      )}
+      {/* Live SMS Delivery — paste Twilio keys to switch from dev mode */}
+      <LiveSmsPanel />
+
 
       {/* Second number guidance */}
       <div className="rounded-lg border border-border/60 p-3">
@@ -2085,3 +2064,252 @@ function PrivacyManagerTab() {
   );
 }
 
+
+// ---------------------------------------------------------------------------
+// Live SMS Delivery — paste Twilio keys to switch phone verification from
+// dev fallback to real SMS. Keys are validated against Twilio live, stored
+// server-side (masked on read), and can be toggled or removed at any time.
+// ---------------------------------------------------------------------------
+
+type SmsProviderStatus = {
+  configured: boolean;
+  enabled: boolean;
+  accountSidMasked: string | null;
+  verifyServiceSidMasked: string | null;
+  senderPhoneNumber: string | null;
+  validatedAt: number | null;
+  updatedAt: number | null;
+};
+
+function LiveSmsPanel() {
+  const config = useQuery(api.smsProviderData.getConfig) as SmsProviderStatus | undefined;
+  const setEnabled = useMutation(api.smsProviderData.setEnabled);
+  const clearConfig = useMutation(api.smsProviderData.clearConfig);
+  const saveAndValidate = useAction(api.smsProvider.saveAndValidate);
+  const sendTestSms = useAction(api.smsProvider.sendTestSms);
+
+  const [accountSid, setAccountSid] = useState("");
+  const [authToken, setAuthToken] = useState("");
+  const [verifySid, setVerifySid] = useState("");
+  const [senderNumber, setSenderNumber] = useState("");
+  const [testTo, setTestTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleSave = async (enableNow: boolean) => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await saveAndValidate({
+        accountSid,
+        authToken,
+        verifyServiceSid: verifySid,
+        senderPhoneNumber: senderNumber || undefined,
+        enableNow,
+      });
+      setResult({
+        ok: res.validated,
+        text: res.validated
+          ? `${res.detail}${res.enabled ? " Live SMS is ON." : " Saved — toggle Live Mode to activate."}`
+          : res.detail,
+      });
+      if (res.validated) {
+        setAuthToken("");
+      }
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : "Save failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleTest = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const res = await sendTestSms({ to: testTo.trim() });
+      setResult({ ok: true, text: `Test SMS sent (status: ${res.status}).` });
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border/60 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-sm font-medium">
+            <MessageSquare className="size-3.5 text-muted-foreground" /> Live SMS Delivery
+          </p>
+          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+            Paste Twilio keys to switch phone verification from dev mode to real
+            SMS delivery.
+          </p>
+        </div>
+        {config?.configured ? (
+          <span
+            className={`flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+              config.enabled
+                ? "bg-emerald-500/10 text-emerald-600"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {config.enabled ? "LIVE" : "saved · off"}
+          </span>
+        ) : (
+          <span className="shrink-0 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600">
+            DEV MODE
+          </span>
+        )}
+      </div>
+
+      {config?.configured && (
+        <div className="rounded border border-border/40 bg-muted/30 px-2 py-1.5 text-[10px] text-muted-foreground">
+          Account SID {config.accountSidMasked} · Verify SID {config.verifyServiceSidMasked}
+          {config.senderPhoneNumber ? ` · sender ${config.senderPhoneNumber}` : ""}
+          {config.validatedAt ? " · validated" : " · NOT validated"}
+        </div>
+      )}
+
+      {/* Paste-keys form */}
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="twilioSid">Account SID (AC…)</Label>
+        <Input
+          id="twilioSid"
+          value={accountSid}
+          onChange={(e) => setAccountSid(e.target.value)}
+          placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          className="font-mono text-xs"
+          autoComplete="off"
+        />
+        <Label htmlFor="twilioToken">Auth Token</Label>
+        <Input
+          id="twilioToken"
+          type="password"
+          value={authToken}
+          onChange={(e) => setAuthToken(e.target.value)}
+          placeholder="Paste from Twilio Console"
+          className="font-mono text-xs"
+          autoComplete="off"
+        />
+        <Label htmlFor="twilioVerify">Verify Service SID (VA…)</Label>
+        <Input
+          id="twilioVerify"
+          value={verifySid}
+          onChange={(e) => setVerifySid(e.target.value)}
+          placeholder="VAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          className="font-mono text-xs"
+          autoComplete="off"
+        />
+        <Label htmlFor="twilioSender">Sender number (optional, for test SMS)</Label>
+        <Input
+          id="twilioSender"
+          value={senderNumber}
+          onChange={(e) => setSenderNumber(e.target.value)}
+          placeholder="+15551234567 (your Twilio number)"
+          className="font-mono text-xs"
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" disabled={busy || !accountSid || !authToken || !verifySid} onClick={() => handleSave(false)}>
+          {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+          Save & validate
+        </Button>
+        <Button size="sm" disabled={busy || !accountSid || !authToken || !verifySid} onClick={() => handleSave(true)}>
+          Save & go live
+        </Button>
+        {config?.configured && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              try {
+                await clearConfig();
+                setResult({ ok: true, text: "Keys removed. Back to dev mode." });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            <Trash2 className="size-3.5" /> Remove keys
+          </Button>
+        )}
+      </div>
+
+      {/* Live mode toggle (validated configs only) */}
+      {config?.configured && config.validatedAt !== null && (
+        <div className="flex items-center justify-between gap-3 rounded border border-border/40 px-2 py-2">
+          <div>
+            <p className="text-xs font-medium">Live Mode</p>
+            <p className="text-[10px] text-muted-foreground">
+              When on, verification codes are delivered by SMS. When off, dev fallback.
+            </p>
+          </div>
+          <Switch
+            checked={config.enabled}
+            disabled={busy}
+            onCheckedChange={async (v) => {
+              setBusy(true);
+              try {
+                await setEnabled({ enabled: v });
+              } finally {
+                setBusy(false);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Test SMS (needs sender number) */}
+      {config?.configured && config.validatedAt !== null && (
+        <div className="flex items-center gap-2">
+          <Input
+            value={testTo}
+            onChange={(e) => setTestTo(e.target.value)}
+            placeholder="Send test SMS to +46…"
+            inputMode="tel"
+            className="text-xs"
+          />
+          <Button size="sm" variant="outline" disabled={busy || !testTo.trim()} onClick={handleTest}>
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+            Test
+          </Button>
+        </div>
+      )}
+
+      {result && (
+        <p className={`text-xs ${result.ok ? "text-emerald-600" : "text-destructive"}`}>{result.text}</p>
+      )}
+
+      <details className="text-xs text-muted-foreground">
+        <summary className="cursor-pointer font-medium">Where do I find these keys?</summary>
+        <ol className="mt-1.5 flex list-decimal flex-col gap-1 pl-4 leading-5">
+          <li>
+            Sign up at{" "}
+            <a href="https://www.twilio.com/try-twilio" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+              twilio.com/try-twilio
+            </a>{" "}
+            (trial includes free credit).
+          </li>
+          <li>Console dashboard: copy <b>Account SID</b> and <b>Auth Token</b>.</li>
+          <li>Verify → Services → create a service → copy its <b>SID</b> (VA…).</li>
+          <li>
+            Optional: buy a Twilio number (trial has one) as the{" "}
+            <b>sender</b> for test messages. Verification SMS sender is managed
+            by the Verify service itself.
+          </li>
+          <li>Paste the three values above → Save &amp; go live.</li>
+        </ol>
+        <p className="mt-1.5 leading-5">
+          Keys are stored server-side only, shown masked here, and never sent
+          back to the browser. Removing them reverts to dev mode instantly.
+        </p>
+      </details>
+    </div>
+  );
+}
