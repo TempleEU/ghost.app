@@ -57,6 +57,10 @@ const schema = defineSchema(
       theme: v.optional(v.string()), // "light" | "dark" | "system"
       appMode: v.optional(v.boolean()), // phone-style app frame on/off
 
+      // Phone verification (Twilio Verify)
+      phoneNumber: v.optional(v.string()), // E.164, e.g. +46701234567
+      phoneVerifiedAt: v.optional(v.number()), // epoch ms when verified
+
       // GhostVPN Server Hub — Outline management API connection
       vpnServerApiUrl: v.optional(v.string()), // e.g. https://1.2.3.4:port/xxxxx
       vpnServerCertSha256: v.optional(v.string()), // API cert fingerprint
