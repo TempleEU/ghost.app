@@ -138,3 +138,44 @@ export const touchAndMarkSync = internalMutation({
     await ctx.db.patch(deviceId, patch);
   },
 });
+
+/** Internal: VPN keys for a user, optionally newer than `since`. */
+export const listKeysInternal = internalQuery({
+  args: { userId: v.id("users"), since: v.number() },
+  handler: async (ctx, { userId, since }) => {
+    const keys = await ctx.db
+      .query("vpnKeys")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    return keys
+      .filter((k) => k.createdAt >= since)
+      .map((k) => ({
+        kind: k.kind,
+        name: k.name,
+        host: k.host,
+        port: k.port,
+        method: k.method ?? null,
+        raw: k.raw,
+        source: k.source ?? null,
+        createdAt: k.createdAt,
+      }));
+  },
+});
+
+/** Internal: settings snapshot for the companion app. */
+export const settingsInternal = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (user === null) return null;
+    return {
+      displayName: user.displayName ?? null,
+      vpnEnabled: user.vpnEnabled ?? false,
+      vpnMode: user.vpnMode ?? "fastest",
+      vpnServer: user.vpnServer ?? "auto",
+      vpnKillSwitch: user.vpnKillSwitch ?? false,
+      vpnAutoConnect: user.vpnAutoConnect ?? false,
+      vpnProtocol: user.vpnProtocol ?? "wireguard",
+    };
+  },
+});
