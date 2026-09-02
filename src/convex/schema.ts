@@ -215,6 +215,23 @@ const schema = defineSchema(
       updatedAt: v.number(),
     }),
 
+    // Ghostly bridge — native companion devices paired with GhostChat.
+    // Device registers with pairingCode, polls/claims a deviceKey, then uses
+    // the deviceKey to pull VPN keys and receive push (sync markers).
+    companionDevices: defineTable({
+      userId: v.id("users"),
+      label: v.string(),
+      platform: v.optional(v.string()), // "android" | "ios" | "desktop"
+      pairingCode: v.string(), // 8-char code shown as QR, short-lived
+      pairingExpiresAt: v.number(),
+      deviceKey: v.optional(v.string()), // long-term key after claim
+      claimedAt: v.optional(v.number()),
+      lastSeenAt: v.optional(v.number()),
+      revoked: v.optional(v.boolean()),
+      // Push state — what the device has already consumed.
+      keysSyncedAt: v.optional(v.number()),
+    }).index("by_user", ["userId", "createdAt"]),
+
     // Fake GPS Location — saved favorite spots.
     fakeGpsFavorites: defineTable({
       userId: v.id("users"),
