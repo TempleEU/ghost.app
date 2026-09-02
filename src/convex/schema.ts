@@ -220,6 +220,7 @@ const schema = defineSchema(
     // the deviceKey to pull VPN keys and receive push (sync markers).
     companionDevices: defineTable({
       userId: v.id("users"),
+      createdAt: v.number(),
       label: v.string(),
       platform: v.optional(v.string()), // "android" | "ios" | "desktop"
       pairingCode: v.string(), // 8-char code shown as QR, short-lived
