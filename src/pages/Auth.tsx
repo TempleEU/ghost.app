@@ -16,7 +16,7 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import logo from "@/assets/logo.svg";
-import { ArrowRight, Loader2, Mail, ShieldCheck, UserX } from "lucide-react";
+import { ArrowRight, Facebook, Github, Loader2, Mail, ShieldCheck, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 
@@ -109,6 +109,66 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     }
   };
 
+  // OAuth sign-in (Google, GitHub, Facebook, Auth0): the client redirects
+  // this tab to the provider's authorization server, so on success the user
+  // lands back on `redirect` already authenticated. No manual navigation
+  // afterwards — the redirect is triggered once the URL is ready.
+  const startOAuth = async (provider: string) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await signIn(provider, { redirectTo: redirect });
+    } catch (error) {
+      console.error(`${provider} sign-in error:`, error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Sign-in failed. Please try again.",
+      );
+      setIsLoading(false);
+    }
+  };
+
+  const socialButtons = [
+    {
+      provider: "google",
+      label: "Continue with Google",
+      mark: (
+        <span className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-white text-[11px] font-bold leading-none text-[#4285F4]">
+          G
+        </span>
+      ),
+    },
+    {
+      provider: "github",
+      label: "Continue with GitHub",
+      mark: (
+        <span className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#24292f] text-white">
+          <Github className="h-3.5 w-3.5" />
+        </span>
+      ),
+    },
+    {
+      provider: "facebook",
+      label: "Continue with Facebook",
+      mark: (
+        <span className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#1877F2] text-white">
+          <Facebook className="h-3.5 w-3.5" />
+        </span>
+      ),
+    },
+    {
+      provider: "auth0",
+      label: "Continue with Auth0",
+      mark: (
+        <span className="mr-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-[#EB5424] text-[10px] font-extrabold leading-none text-white select-none">
+          A0
+        </span>
+      ),
+    },
+  ];
+
+
   return (
     <div className="min-h-screen flex flex-col">
 
@@ -179,10 +239,25 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       </div>
                     </div>
                     
+                    <div className="mt-4 flex flex-col gap-2">
+                      {socialButtons.map(({ provider, label, mark }) => (
+                        <Button
+                          key={provider}
+                          type="button"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => startOAuth(provider)}
+                          disabled={isLoading}
+                        >
+                          {mark}
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
                     <Button
                       type="button"
-                      variant="outline"
-                      className="w-full mt-4"
+                      variant="ghost"
+                      className="w-full mt-2 text-muted-foreground"
                       onClick={handleGuestLogin}
                       disabled={isLoading}
                     >
