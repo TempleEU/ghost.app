@@ -29,16 +29,18 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install dependencies
-        run: npm ci
+        run: npm install --no-audit --no-fund
       - name: Lint
         run: npm run lint
       - name: Build
         run: npm run build
       - name: Configure Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -56,10 +58,6 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v5
 
-  # Cross-repo trigger: tag TempleEU/Ghostly.android@Ghostly.main and fire its
-  # Release workflow via repository_dispatch. Requires the ANDROID_DISPATCH_PAT
-  # secret (classic PAT with `repo` scope, or fine-grained: Contents RW +
-  # Metadata R on TempleEU/Ghostly.android only).
   dispatch-ghostly-release:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -73,30 +71,10 @@ jobs:
           API="https://api.github.com"
           REPO="TempleEU/Ghostly.android"
           AUTH="Authorization: Bearer $GH_PAT"
-
           TAG="${TAG_INPUT:-v$(date -u +%Y.%m.%d.%H%M)}"
           case "$TAG" in v*) ;; *) TAG="v$TAG" ;; esac
-          echo "Tag: $TAG"
-
           SHA="$(curl -sf -H "$AUTH" "$API/repos/$REPO/branches/Ghostly.main" | jq -r .commit.sha)"
-          echo "Ghostly.main HEAD: $SHA"
-
-          HTTP=$(curl -s -o ref_out.json -w "%{http_code}" -X POST \
-            -H "$AUTH" -H "Accept: application/vnd.github+json" \
-            "$API/repos/$REPO/git/refs" \
-            -d "{\"ref\":\"refs/tags/$TAG\",\"sha\":\"$SHA\"}")
-          if [ "$HTTP" != "201" ]; then
-            echo "Tag creation failed (HTTP $HTTP):"; cat ref_out.json; echo
-            exit 1
-          fi
-          echo "Tag $TAG created at $SHA"
-
-          HTTP=$(curl -s -o disp_out.json -w "%{http_code}" -X POST \
-            -H "$AUTH" -H "Accept: application/vnd.github+json" \
-            "$API/repos/$REPO/dispatches" \
-            -d "{\"event_type\":\"ghostly-release\",\"client_payload\":{\"version\":\"$TAG\"}}")
-          if [ "$HTTP" != "204" ]; then
-            echo "Dispatch failed (HTTP $HTTP):"; cat disp_out.json; echo
-            exit 1
-          fi
-          echo "Dispatched ghostly-release ($TAG) — Release workflow starting on $REPO"
+          HTTP=$(curl -s -o ref_out.json -w "%{http_code}" -X POST -H "$AUTH" -H "Accept: application/vnd.github+json" "$API/repos/$REPO/git/refs" -d "{\"ref\":\"refs/tags/$TAG\",\"sha\":\"$SHA\"}")
+          if [ "$HTTP" != "201" ]; then cat ref_out.json; exit 1; fi
+          HTTP=$(curl -s -o disp_out.json -w "%{http_code}" -X POST -H "$AUTH" -H "Accept: application/vnd.github+json" "$API/repos/$REPO/dispatches" -d "{\"event_type\":\"ghostly-release\",\"client_payload\":{\"version\":\"$TAG\"}}")
+          if [ "$HTTP" != "204" ]; then cat disp_out.json; exit 1; fi
