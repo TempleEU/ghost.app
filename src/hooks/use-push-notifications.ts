@@ -1,12 +1,16 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { useMutation } from "convex/react";
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
+import { api } from "@/convex/_generated/api";
 
 /**
  * Native push notifications for the Capacitor Android/iOS app.
  *
  * - Requests permission and registers the device on first run.
+ * - Ships the FCM/APNs registration token to the server (pushTokens table)
+ *   so the backend can deliver notifications (see src/convex/pushSender.ts).
  * - Tapping a notification opens the chat workspace.
  *
  * NOTE: remote delivery requires provider config outside this repo —
@@ -16,6 +20,7 @@ import { useNavigate } from "react-router";
  */
 export function usePushNotifications() {
   const navigate = useNavigate();
+  const saveDeviceToken = useMutation(api.push.saveDeviceToken);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -23,6 +28,8 @@ export function usePushNotifications() {
     let active = true;
     let tokenListener: { remove: () => Promise<void> } | undefined;
     let actionListener: { remove: () => Promise<void> } | undefined;
+
+    const platform = Capacitor.getPlatform() as "android" | "ios";
 
     (async () => {
       try {
@@ -35,10 +42,11 @@ export function usePushNotifications() {
         await PushNotifications.register();
 
         tokenListener = await PushNotifications.addListener("registration", (token) => {
-          // The device token is what the push provider (FCM/APNs) needs.
-          // Ship it to your backend here when wiring real delivery.
           console.info("[GhostWeb] push token registered");
-          void token;
+          // Persist the token so the backend can send this device pushes.
+          // Best-effort: not signed in yet -> skipped, the next registration
+          // (or app start) picks it up.
+          void saveDeviceToken({ token: token.value, platform }).catch(() => {});
         });
 
         actionListener = await PushNotifications.addListener(
@@ -57,5 +65,5 @@ export function usePushNotifications() {
       tokenListener?.remove();
       actionListener?.remove();
     };
-  }, [navigate]);
+  }, [navigate, saveDeviceToken]);
 }

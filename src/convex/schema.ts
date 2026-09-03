@@ -81,6 +81,18 @@ const schema = defineSchema(
     }).index("email", ["email"]) // index for the email. do not remove or modify
       .index("handle", ["handle"]),
 
+    // Native push registration tokens (FCM on Android, APNs via FCM on iOS).
+    // The server uses these to deliver remote notifications (e.g. test pushes).
+    pushTokens: defineTable({
+      userId: v.id("users"),
+      platform: v.union(v.literal("android"), v.literal("ios"), v.literal("web")),
+      token: v.string(),
+      registeredAt: v.number(),
+      lastSeenAt: v.number(),
+    })
+      .index("by_token", ["token"])
+      .index("by_user", ["userId", "lastSeenAt"]),
+
     // Security alerts: devices currently logged into end-to-end encrypted chats.
     devices: defineTable({
       userId: v.id("users"),

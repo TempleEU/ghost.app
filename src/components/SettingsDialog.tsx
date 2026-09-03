@@ -1,5 +1,7 @@
 import { useAction, useMutation, useQuery } from "convex/react";
+import { Capacitor } from "@capacitor/core";
 import { api } from "@/convex/_generated/api";
+import { PushTestCard } from "@/components/PushTestCard";
 import { publicKeyFingerprint } from "@/lib/crypto";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1917,6 +1919,7 @@ function AppsPermissionsTab() {
         needs it. Toggle access on or off here — turning something off makes
         the app skip it entirely (no background collection).
       </p>
+      <PushTestCard />
       <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
         <p className="text-sm font-medium">GhostWeb · device access</p>
         {APP_PERMISSIONS.map((p) => {
