@@ -10,14 +10,14 @@
 
 | Platform | Status |
 |---|---|
-| Web | **Available** |
-| Android | In development / integration |
-| iOS | In development |
-| macOS | In development |
-| Windows | In development |
-| Linux | In development |
+| Web / PWA | **Available** (installable on Android & iOS home screens) |
+| Android | **Native app** — Capacitor project in `android/` |
+| iOS | **Native app** — Capacitor project in `ios/` |
+| macOS | Installable as a PWA today; native packaging next |
+| Windows | Installable as a PWA today; native packaging next |
+| Linux | Installable as a PWA today; native packaging next |
 
-The current Ghost.app implementation is web-based. Broader platform compatibility is being developed progressively.
+Ghost.app ships as a web app that is wrapped into native Android and iOS applications with **Capacitor** — one shared codebase (Vite · React · Convex) for every outlet.
 
 ## Highlights
 
@@ -71,6 +71,33 @@ bunx tsc -b --noEmit
 bunx convex dev --once
 ```
 
+## Mobile apps (Android & iOS)
+
+The native projects live in `android/` and `ios/` and are generated from the web build with Capacitor:
+
+```bash
+bun run build       # build the web app into dist/
+bun run cap:sync    # copy dist/ into the native projects
+bun run cap:android # open the project in Android Studio -> Run on device/emulator
+bun run cap:ios     # open the project in Xcode (macOS only) -> Run
+```
+
+Regenerate the app icon / PWA icon set from `public/logo.svg`:
+
+```bash
+bun run icons
+```
+
+### First-time native setup
+
+- **Android**: install [Android Studio](https://developer.android.com/studio) (SDK + a device/emulator), then run `bun run cap:android`.
+- **iOS**: requires macOS + Xcode. The bundle ID is `app.ghost.chat` (change it in `capacitor.config.ts` before store submission).
+- **Push notifications & storage**: add the relevant Capacitor plugins (e.g. `@capacitor/push-notifications`, `@capacitor/preferences`) when native features are needed; the web app keeps working unchanged.
+
+### Installable web app (PWA)
+
+`public/manifest.webmanifest` plus the generated PNG icons make the site installable — on Android via Chrome (*Add to Home screen*) and on iOS via Safari (*Share → Add to Home Screen*). Regenerate icons with `bun run icons`.
+
 ## Project structure
 
 ```text
@@ -84,7 +111,7 @@ src/
 
 ## Ghost ecosystem
 
-Ghost.app is part of the broader Ghost privacy ecosystem. The Android project is maintained separately as **Ghostly Android**, with cross-platform development continuing toward iOS, macOS, Windows and Linux.
+Ghost.app is part of the broader Ghost privacy ecosystem. The Android project is maintained separately as **Ghostly Android**, while this repository's Capacitor setup covers Android, iOS and PWA installs from the same codebase.
 
 ## Contributing
 
