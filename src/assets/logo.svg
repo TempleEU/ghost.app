@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 256 256">
-  <!-- GhostWeb logo: dark tile, phone-shaped secure input, masked key row -->
+  <!-- GhostChat logo: dark tile, phone-shaped secure input, masked key row -->
   <rect width="256" height="256" rx="48" fill="#232323"/>
   <rect x="88" y="32" width="80" height="192" rx="18" fill="#333333"/>
   <g fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="46" text-anchor="middle">

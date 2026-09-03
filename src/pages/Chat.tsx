@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import {
@@ -6,6 +6,7 @@ import {
   saveIdentity,
   loadIdentity,
   hasStoredIdentity,
+  isIdentityUnprotected,
   generateConversationKey,
   wrapConversationKey,
   unwrapConversationKey,
@@ -36,7 +37,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAppMode } from "@/hooks/use-app-mode";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { publicKeyFingerprint } from "@/lib/crypto";
-import { ArrowLeft, Ghost, Lock, Loader2, MoreVertical, Send, Settings, ShieldAlert, Timer, UserPlus } from "lucide-react";
+import { ArrowLeft, Ghost, Languages, Lock, Loader2, MoreVertical, ScrollText, Send, Settings, ShieldAlert, Sparkles, Timer, UserPlus, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 type Identity = { userId: string; handle: string; publicKeyJwk: string };
@@ -201,12 +202,14 @@ function IdentitySetup({
     setBusy(true);
     setError(null);
     try {
-      if (passphrase.length < 8) {
-        throw new Error("Passphrase must be at least 8 characters.");
-      }
       const identity = await generateIdentity();
-      // Private key is wrapped with the passphrase and stored ONLY in this
-      // browser. The server receives the public key and handle — nothing else.
+      if (passphrase && passphrase.length < 8) {
+        throw new Error("Passphrase must be at least 8 characters if set.");
+      }
+      // With a passphrase the private key is wrapped and stored ONLY in this
+      // browser. Without one (guest mode) it is stored plainly so the app
+      // unlocks automatically next time. The server receives the public key
+      // and handle — nothing else.
       await saveIdentity(passphrase, identity);
       await register({ handle: handle.trim(), publicKeyJwk: identity.publicKeyJwk });
       onDone();
@@ -241,23 +244,24 @@ function IdentitySetup({
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="passphrase">Encryption passphrase (min 8 chars)</Label>
+            <Label htmlFor="passphrase">Encryption passphrase (optional)</Label>
             <Input
               id="passphrase"
               type="password"
               value={passphrase}
               onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="Wraps your private key at rest"
+              placeholder="Leave empty for instant guest mode"
             />
             <p className="text-xs text-muted-foreground">
-              If you lose this passphrase, your messages cannot be decrypted on
-              this device. There is no recovery.
+              Skip it to chat instantly — your key stays in this browser and
+              unlocks automatically. Add one to protect your key at rest; if you
+              lose it, there is no recovery.
             </p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button onClick={handleCreate} disabled={busy || !handle.trim() || passphrase.length < 8}>
+          <Button onClick={handleCreate} disabled={busy || !handle.trim()}>
             {busy ? <Loader2 className="size-4 animate-spin" /> : <Lock className="size-4" />}
-            Create identity
+            {passphrase ? "Create identity" : "Start chatting"}
           </Button>
           <Button variant="ghost" onClick={onSignOut}>
             Sign out
@@ -284,17 +288,19 @@ function UnlockScreen({
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasLocalKey, setHasLocalKey] = useState<boolean | null>(null);
 
+  // Guest mode: identity stored without a passphrase — unlock automatically.
   useEffect(() => {
-    let active = true;
-    hasStoredIdentity().then((has) => {
-      if (active) setHasLocalKey(has);
-    });
+    if (!isIdentityUnprotected()) return;
+    let cancelled = false;
+    (async () => {
+      const key = await loadIdentity("");
+      if (!cancelled && key) onUnlocked(key);
+    })();
     return () => {
-      active = false;
+      cancelled = true;
     };
-  }, []);
+  }, [onUnlocked]);
 
   const handleUnlock = async () => {
     setBusy(true);
@@ -319,17 +325,17 @@ function UnlockScreen({
           <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full border border-foreground/15">
             <Lock className="size-5 text-foreground/70" />
           </div>
-          <CardTitle className="text-xl">Unlock GhostWeb</CardTitle>
+          <CardTitle className="text-xl">Unlock GhostChat</CardTitle>
           <CardDescription>
             Welcome back, {identity.handle}. Enter your passphrase to decrypt
             your private key for this session.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {hasLocalKey === false && (
+          {!hasStoredIdentity() && (
             <p className="text-sm text-destructive">
-              No local key found on this device. GhostWeb keys are
-              device-bound — sign in on the device where you created your
+              No local key found in this browser. GhostChat keys are
+              device-bound — sign in on the browser where you created your
               identity.
             </p>
           )}
@@ -436,14 +442,14 @@ function ChatWorkspace({
   const selectedConv = visibleConversations.find((c) => c._id === selectedConvId) ?? null;
 
   return (
-    <main className="flex h-screen bg-background text-foreground">
-      {/* Sidebar — phone-style: full width, hidden while a chat is open */}
+    <main className="flex h-dvh bg-background text-foreground">
+      {/* Sidebar — phone-style: full width, hidden while a chat is open.
+          Below md the app is always single-pane so it fits any phone screen;
+          App Mode extends that behavior to desktop. */}
       <aside
         className={`flex shrink-0 flex-col border-r border-border/60 ${
-          appMode
-            ? `w-full ${selectedConv !== null ? "hidden" : ""}`
-            : "w-80"
-        }`}
+          selectedConv !== null ? (appMode ? "hidden" : "hidden md:flex") : ""
+        } ${appMode ? "w-full" : "w-full md:w-80"}`}
       >
         <header className="flex items-center justify-between border-b border-border/60 px-4 py-3">
           <div className="flex items-center gap-2">
@@ -451,7 +457,7 @@ function ChatWorkspace({
               <Ghost className="size-3.5 text-foreground/70" />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-medium leading-tight">GhostWeb</span>
+              <span className="text-sm font-medium leading-tight">GhostChat</span>
               <span className="text-xs text-muted-foreground">{me.handle}</span>
             </div>
           </div>
@@ -510,10 +516,11 @@ function ChatWorkspace({
         </footer>
       </aside>
 
-      {/* Chat area — full width in App Mode once a chat is open */}
+      {/* Chat area — full width once a chat is open; below md it replaces
+          the sidebar (single pane). Desktop shows the two-pane layout. */}
       <section
         className={`flex flex-1 flex-col ${
-          appMode && selectedConv === null ? "hidden" : ""
+          selectedConv === null ? (appMode ? "hidden" : "hidden md:flex") : ""
         }`}
       >
         <SettingsDialog
@@ -528,6 +535,7 @@ function ChatWorkspace({
             me={me}
             conv={selectedConv}
             convKey={convKeys.get(selectedConv._id) ?? null}
+            appMode={appMode}
             onBack={() => onSelectConv(null)}
           />
         ) : (
@@ -549,11 +557,13 @@ function ChatView({
   me,
   conv,
   convKey,
+  appMode,
   onBack,
 }: {
   me: Identity;
   conv: Conversation;
   convKey: CryptoKey | null;
+  appMode: boolean;
   onBack: () => void;
 }) {
   const messages = useQuery(api.chat.listMessages, {
@@ -574,6 +584,114 @@ function ChatView({
     (userId: string) => conv.members.find((m) => m.userId === userId)?.handle ?? "ghost",
     [conv.members],
   );
+
+  // --- AI Assistant (feature-gated: must be enabled in Settings → AI) ------
+  const aiConfig = useQuery(api.aiProviderData.getConfig) as
+    | { configured: boolean; enabled: boolean; validatedAt: number | null }
+    | null
+    | undefined;
+  const aiOn = !!(aiConfig?.configured && aiConfig.enabled && aiConfig.validatedAt);
+  const aiSmartReplies = useAction(api.ai.smartReplies);
+  const aiTranslate = useAction(api.ai.translateMessage);
+  const aiSummarize = useAction(api.ai.summarizeConversation);
+  const aiDraft = useAction(api.ai.draftMessage);
+  const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+  const [aiBusy, setAiBusy] = useState<string | null>(null);
+  const [aiPanel, setAiPanel] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [translateOpen, setTranslateOpen] = useState(false);
+  const [translateLang, setTranslateLang] = useState("English");
+  const [draftOpen, setDraftOpen] = useState(false);
+  const [draftInstruction, setDraftInstruction] = useState("");
+  const [draftResult, setDraftResult] = useState<string | null>(null);
+
+  const lastIncoming = [...(messages ?? [])].reverse().find((m) => m.senderId !== me.userId);
+  const lastIncomingText = lastIncoming ? plaintexts.get(lastIncoming._id) : undefined;
+  const lastMessageAny = messages?.length ? messages[messages.length - 1] : null;
+  const lastMessageAnyText = lastMessageAny ? plaintexts.get(lastMessageAny._id) : undefined;
+
+  const genSuggestions = async () => {
+    if (!lastIncoming || !lastIncomingText) return;
+    setAiBusy("replies");
+    setAiError(null);
+    setAiPanel(null);
+    try {
+      const res = (await aiSmartReplies({
+        lastMessage: lastIncomingText,
+        otherHandle: memberHandle(lastIncoming.senderId),
+      })) as { replies: string[] };
+      setAiSuggestions(res.replies);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "AI request failed");
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  const doTranslate = async () => {
+    if (!lastMessageAny || !lastMessageAnyText) return;
+    setAiBusy("translate");
+    setAiError(null);
+    setAiPanel(null);
+    try {
+      const res = (await aiTranslate({
+        text: lastMessageAnyText,
+        targetLanguage: translateLang,
+      })) as { translated: string };
+      setAiPanel(
+        `🌐 ${memberHandle(lastMessageAny.senderId)} → ${translateLang}:\n${res.translated}`,
+      );
+      setTranslateOpen(false);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "AI request failed");
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  const doSummarize = async () => {
+    if (!messages || messages.length === 0) return;
+    setAiBusy("summarize");
+    setAiError(null);
+    setAiPanel(null);
+    try {
+      const res = (await aiSummarize({
+        messages: messages
+          .filter((m) => plaintexts.has(m._id))
+          .map((m) => ({
+            sender: memberHandle(m.senderId),
+            body: plaintexts.get(m._id) ?? "",
+            mine: m.senderId === me.userId,
+          })),
+      })) as { summary: string };
+      setAiPanel(`📜 Summary:\n${res.summary}`);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "AI request failed");
+    } finally {
+      setAiBusy(null);
+    }
+  };
+
+  const doDraft = async () => {
+    if (!draftInstruction.trim()) return;
+    setAiBusy("draft");
+    setAiError(null);
+    try {
+      const context = messages
+        ?.slice(-8)
+        .map((m) => `${memberHandle(m.senderId)}: ${plaintexts.get(m._id) ?? ""}`)
+        .join("\n");
+      const res = (await aiDraft({
+        instruction: draftInstruction,
+        context: context || undefined,
+      })) as { draft: string };
+      setDraftResult(res.draft);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : "AI request failed");
+    } finally {
+      setAiBusy(null);
+    }
+  };
 
   // Decrypt messages as they arrive.
   useEffect(() => {
@@ -616,7 +734,7 @@ function ChatView({
       Notification.permission === "granted"
     ) {
       const n = count - prev;
-      new Notification("GhostWeb", {
+      new Notification("GhostChat", {
         body: `${n} new encrypted message${n > 1 ? "s" : ""}`,
         tag: `ghostchat-${conv._id}`,
       });
@@ -652,7 +770,12 @@ function ChatView({
   return (
     <>
       <header className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
-        <Button variant="ghost" size="icon" className="md:hidden" onClick={onBack}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={appMode ? "" : "md:hidden"}
+          onClick={onBack}
+        >
           <ArrowLeft className="size-4" />
         </Button>
         <Ghost className="size-4 text-muted-foreground" />
@@ -664,6 +787,52 @@ function ChatView({
           <MessageActionsMenu other={other} />
         )}
       </header>
+
+      {aiOn && (
+        <div className="flex flex-wrap items-center gap-1 border-b border-border/40 px-4 py-1.5">
+          <span className="mr-1 flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            <Sparkles className="size-3" /> AI
+          </span>
+          {lastIncomingText && (
+            <button
+              type="button"
+              onClick={() => void genSuggestions()}
+              disabled={aiBusy !== null}
+              className="flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[11px] transition-colors hover:bg-accent/40 disabled:opacity-50"
+            >
+              {aiBusy === "replies" ? <Loader2 className="size-3 animate-spin" /> : <Wand2 className="size-3" />}
+              Replies
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setTranslateOpen((v) => !v)}
+            disabled={aiBusy !== null || !lastMessageAnyText}
+            className="flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[11px] transition-colors hover:bg-accent/40 disabled:opacity-50"
+          >
+            <Languages className="size-3" /> Translate
+          </button>
+          <button
+            type="button"
+            onClick={() => void doSummarize()}
+            disabled={aiBusy !== null || !messages?.length}
+            className="flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[11px] transition-colors hover:bg-accent/40 disabled:opacity-50"
+          >
+            {aiBusy === "summarize" ? <Loader2 className="size-3 animate-spin" /> : <ScrollText className="size-3" />}
+            Summarize
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setDraftOpen(true);
+              setDraftResult(null);
+            }}
+            className="flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[11px] transition-colors hover:bg-accent/40"
+          >
+            <Sparkles className="size-3" /> Draft
+          </button>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {!convKey && (
@@ -750,6 +919,76 @@ function ChatView({
         <div ref={bottomRef} />
       </div>
 
+      {(aiPanel || aiError || (aiOn && aiSuggestions.length > 0)) && (
+        <div className="border-t border-border/40 bg-muted/40 px-4 py-2">
+          {aiError && <p className="text-xs text-destructive">⚠ {aiError}</p>}
+          {aiPanel && (
+            <div className="flex items-start gap-2">
+              <p className="flex-1 whitespace-pre-wrap break-words text-xs text-muted-foreground">{aiPanel}</p>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-foreground"
+                onClick={() => setAiPanel(null)}
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {aiSuggestions.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {aiSuggestions.map((s, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setText(s);
+                    setAiSuggestions([]);
+                  }}
+                  className="max-w-full truncate rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-[11px] transition-colors hover:bg-primary/20"
+                >
+                  {s}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="px-1 text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={() => setAiSuggestions([])}
+                aria-label="Dismiss suggestions"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {aiOn && translateOpen && (
+        <div className="flex items-center gap-2 border-t border-border/40 bg-muted/40 px-4 py-2">
+          <Select value={translateLang} onValueChange={setTranslateLang}>
+            <SelectTrigger className="h-7 w-[150px]" size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {"English,Swedish,Spanish,French,German,Portuguese,Arabic,Chinese,Japanese,Russian"
+                .split(",")
+                .map((l) => (
+                  <SelectItem key={l} value={l}>
+                    {l}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" onClick={() => void doTranslate()} disabled={aiBusy !== null}>
+            {aiBusy === "translate" ? <Loader2 className="size-3.5 animate-spin" /> : null}
+            Translate last message
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setTranslateOpen(false)}>
+            ✕
+          </Button>
+        </div>
+      )}
+
       {replyTo && (
         <div className="flex items-center gap-2 border-t border-border/40 bg-muted/40 px-4 py-1.5 text-xs">
           <span className="text-muted-foreground">
@@ -763,11 +1002,61 @@ function ChatView({
           </button>
         </div>
       )}
+      {aiOn && (
+        <Dialog open={draftOpen} onOpenChange={setDraftOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-base">
+                <Sparkles className="size-4 text-muted-foreground" /> AI draft
+              </DialogTitle>
+              <DialogDescription>
+                Describe what you want to say — AI writes it, you review and send.
+              </DialogDescription>
+            </DialogHeader>
+            <Input
+              value={draftInstruction}
+              onChange={(e) => setDraftInstruction(e.target.value)}
+              placeholder="e.g. politely postpone tomorrow's meeting"
+            />
+            {draftResult && (
+              <p className="whitespace-pre-wrap rounded-lg border border-border/60 bg-muted/40 p-2 text-xs">
+                {draftResult}
+              </p>
+            )}
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void doDraft()}
+                disabled={aiBusy === "draft" || !draftInstruction.trim()}
+              >
+                {aiBusy === "draft" ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                Generate
+              </Button>
+              <Button
+                size="sm"
+                disabled={!draftResult}
+                onClick={() => {
+                  setText(draftResult ?? "");
+                  setDraftOpen(false);
+                }}
+              >
+                <Send className="size-4" /> Use draft
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       <footer className="flex items-center gap-2 border-t border-border/60 px-4 py-3">
         <Select value={disappearing} onValueChange={setDisappearing}>
-          <SelectTrigger className="w-[130px]" size="sm">
-            <Timer className="size-3.5" />
-            <SelectValue />
+          <SelectTrigger
+            className="w-10 shrink-0 md:w-[130px]"
+            size="sm"
+            title="Disappearing messages"
+          >
+            <Timer className="size-3.5 shrink-0" />
+            <SelectValue className="hidden md:inline" />
           </SelectTrigger>
           <SelectContent>
             {DISAPPEARING_OPTIONS.map((o) => (
@@ -783,6 +1072,7 @@ function ChatView({
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
           placeholder={convKey ? "Write a sealed message…" : "Decrypting…"}
           disabled={!convKey}
+          className="min-w-0 flex-1"
         />
         <Button size="icon" onClick={handleSend} disabled={!convKey || busy || !text.trim()}>
           {busy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}

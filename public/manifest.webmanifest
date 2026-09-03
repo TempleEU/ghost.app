@@ -1,31 +1,17 @@
 {
-  "name": "GhostWeb",
-  "short_name": "GhostWeb",
-  "description": "GhostWeb — Encrypted Chat System. Powered by No Location.",
+  "name": "GhostChat.app",
+  "short_name": "GhostChat",
+  "description": "GhostChat — Encrypted Chat System. Powered by No Location.",
   "start_url": "/",
-  "scope": "/",
   "display": "standalone",
-  "orientation": "any",
-  "background_color": "#232323",
-  "theme_color": "#232323",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
   "icons": [
     {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
+      "src": "/logo.png",
+      "sizes": "any",
       "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-maskable.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any maskable"
     }
   ]
 }

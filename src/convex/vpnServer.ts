@@ -165,7 +165,7 @@ export const createServerKey = action({
       raw: key.accessUrl,
       source: "outline" as const,
     };
-    const existing = await ctx.runQuery(api.vpn.listKeys);
+    const existing = (await ctx.runQuery(api.vpn.listKeys)) as Array<{ raw: string }>;
     if (!existing.some((k) => k.raw === parsed.raw)) {
       await ctx.runMutation(api.vpn.addKey, parsed);
     }

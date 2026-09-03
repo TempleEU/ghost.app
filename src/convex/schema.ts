@@ -31,7 +31,7 @@ const schema = defineSchema(
 
       role: v.optional(roleValidator), // role of the user. do not remove
 
-      // GhostWeb E2E identity (v1)
+      // GhostChat E2E identity (v1)
       handle: v.optional(v.string()), // public chat handle, e.g. ghost-7f3a9c
       publicKeyJwk: v.optional(v.string()), // ECDH P-256 public key (JSON JWK)
 
@@ -71,7 +71,7 @@ const schema = defineSchema(
       vpnServerVerified: v.optional(v.boolean()), // connection test passed
 
       // Fake GPS Location — spoofing configuration consumed by the native
-      // GhostWeb companion (mock location on Android, Xcode/CoreLocation
+      // GhostChat companion (mock location on Android, Xcode/CoreLocation
       // simulation on iOS/macOS, geolocation override on Windows browsers).
       fakeGpsEnabled: v.optional(v.boolean()),
       fakeGpsLat: v.optional(v.number()),
@@ -80,18 +80,6 @@ const schema = defineSchema(
       fakeGpsJitter: v.optional(v.number()), // meters of accuracy variance
     }).index("email", ["email"]) // index for the email. do not remove or modify
       .index("handle", ["handle"]),
-
-    // Native push registration tokens (FCM on Android, APNs via FCM on iOS).
-    // The server uses these to deliver remote notifications (e.g. test pushes).
-    pushTokens: defineTable({
-      userId: v.id("users"),
-      platform: v.union(v.literal("android"), v.literal("ios"), v.literal("web")),
-      token: v.string(),
-      registeredAt: v.number(),
-      lastSeenAt: v.number(),
-    })
-      .index("by_token", ["token"])
-      .index("by_user", ["userId", "lastSeenAt"]),
 
     // Security alerts: devices currently logged into end-to-end encrypted chats.
     devices: defineTable({
@@ -103,7 +91,7 @@ const schema = defineSchema(
       revoked: v.optional(v.boolean()),
     }).index("by_user", ["userId", "lastSeenAt"]),
 
-    // GhostWeb v1: conversations with per-member wrapped keys (server never
+    // GhostChat v1: conversations with per-member wrapped keys (server never
     // sees plaintext or unwrapped keys).
     conversations: defineTable({
       // Denormalized member snapshots so the client can unwrap without extra joins.
@@ -172,7 +160,7 @@ const schema = defineSchema(
     }).index("by_user", ["userId", "createdAt"]),
 
     // SMS Gateway devices — phones running an SMS-gateway app that POSTs
-    // incoming SMS to GhostWeb. One API key per device.
+    // incoming SMS to GhostChat. One API key per device.
     smsDevices: defineTable({
       userId: v.id("users"),
       label: v.string(), // e.g. "Pixel 8 — bedside phone"
@@ -227,7 +215,23 @@ const schema = defineSchema(
       updatedAt: v.number(),
     }),
 
-    // Ghostly bridge — native companion devices paired with GhostWeb.
+    // AI Assistant — singleton provider config (at most one row).
+    // Keys stored server-side only; reads return masked values. Any
+    // OpenAI-compatible endpoint works: Gemini, Groq, OpenRouter, NVIDIA NIM,
+    // Cloudflare Workers AI, Kilo, LLM7, OVHcloud, or a self-hosted OmniRoute.
+    aiProviderConfig: defineTable({
+      singleton: v.boolean(), // always true; enforces one row
+      preset: v.string(), // "gemini" | "groq" | "openrouter" | "nvidia" | "cloudflare" | "kilo" | "llm7" | "ovh" | "custom"
+      baseUrl: v.string(),
+      model: v.string(),
+      apiKey: v.string(), // secret; "" = keyless (LLM7/OVH/Kilo anonymous)
+      enabled: v.boolean(),
+      validatedAt: v.optional(v.number()),
+      updatedBy: v.id("users"),
+      updatedAt: v.number(),
+    }),
+
+    // Ghostly bridge — native companion devices paired with GhostChat.
     // Device registers with pairingCode, polls/claims a deviceKey, then uses
     // the deviceKey to pull VPN keys and receive push (sync markers).
     companionDevices: defineTable({

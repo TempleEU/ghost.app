@@ -65,6 +65,11 @@ import {
   Users,
   Bell,
   Send,
+  Sparkles,
+  Wand2,
+  Languages,
+  ScrollText,
+  RefreshCcw,
 } from "lucide-react";
 
 type DeviceInfo = {
@@ -101,7 +106,7 @@ export function SettingsDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[85dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Ghost className="size-4 text-muted-foreground" /> Settings
@@ -111,41 +116,46 @@ export function SettingsDialog({
           </DialogDescription>
         </DialogHeader>
         <Tabs defaultValue="profile">
-          <TabsList className="w-full">
-            <TabsTrigger value="profile" className="flex-1 gap-1.5">
+          <div className="w-full overflow-x-auto md:overflow-visible">
+            <TabsList className="w-full justify-start gap-1 md:flex-wrap">
+            <TabsTrigger value="profile" className="shrink-0 gap-1.5">
               <UserRound className="size-3.5" /> Profile
             </TabsTrigger>
-            <TabsTrigger value="display" className="flex-1 gap-1.5">
+            <TabsTrigger value="display" className="shrink-0 gap-1.5">
               <Sun className="size-3.5" /> Display
             </TabsTrigger>
-            <TabsTrigger value="storage" className="flex-1 gap-1.5">
+            <TabsTrigger value="storage" className="shrink-0 gap-1.5">
               <HardDriveDownload className="size-3.5" /> Storage
             </TabsTrigger>
-            <TabsTrigger value="security" className="flex-1 gap-1.5">
+            <TabsTrigger value="security" className="shrink-0 gap-1.5">
               <ShieldCheck className="size-3.5" /> Security
             </TabsTrigger>
-            <TabsTrigger value="keys" className="flex-1 gap-1.5">
+            <TabsTrigger value="keys" className="shrink-0 gap-1.5">
               <Fingerprint className="size-3.5" /> Keys
             </TabsTrigger>
-            <TabsTrigger value="vpn" className="flex-1 gap-1.5">
+            <TabsTrigger value="vpn" className="shrink-0 gap-1.5">
               <Globe className="size-3.5" /> GhostVPN
             </TabsTrigger>
-            <TabsTrigger value="serverhub" className="flex-1 gap-1.5">
+            <TabsTrigger value="serverhub" className="shrink-0 gap-1.5">
               <ServerCog className="size-3.5" /> Hub
             </TabsTrigger>
-            <TabsTrigger value="smsgw" className="flex-1 gap-1.5">
+            <TabsTrigger value="smsgw" className="shrink-0 gap-1.5">
               <MessageSquare className="size-3.5" /> SMS
             </TabsTrigger>
-            <TabsTrigger value="phone" className="flex-1 gap-1.5">
+            <TabsTrigger value="phone" className="shrink-0 gap-1.5">
               <Phone className="size-3.5" /> Phone
             </TabsTrigger>
-            <TabsTrigger value="apps" className="flex-1 gap-1.5">
+            <TabsTrigger value="apps" className="shrink-0 gap-1.5">
               <LayoutGrid className="size-3.5" /> Apps
             </TabsTrigger>
-            <TabsTrigger value="privacy" className="flex-1 gap-1.5">
+            <TabsTrigger value="privacy" className="shrink-0 gap-1.5">
               <EyeOff className="size-3.5" /> Privacy
             </TabsTrigger>
-          </TabsList>
+            <TabsTrigger value="ai" className="shrink-0 gap-1.5">
+              <Sparkles className="size-3.5" /> AI
+            </TabsTrigger>
+            </TabsList>
+          </div>
           <TabsContent value="profile">
             <ProfileTab />
           </TabsContent>
@@ -178,6 +188,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="privacy">
             <PrivacyManagerTab />
+          </TabsContent>
+          <TabsContent value="ai">
+            <AiAssistantTab />
           </TabsContent>
         </Tabs>
       </DialogContent>
@@ -349,8 +362,10 @@ function DisplayTab() {
         <div>
           <p className="text-sm font-medium">App Mode</p>
           <p className="text-xs leading-5 text-muted-foreground">
-            When on, GhostChat runs in a compact phone-style app frame. When
-            off, you get the full desktop layout.
+            When on, GhostChat runs in a compact phone-style layout — one pane
+            at a time. When off, you get the full desktop two-pane layout. On
+            phones this follows your screen automatically until you switch it
+            manually.
           </p>
         </div>
         <Switch
@@ -2309,6 +2324,324 @@ function LiveSmsPanel() {
           back to the browser. Removing them reverts to dev mode instantly.
         </p>
       </details>
+    </div>
+  );
+}
+// ---------------------------------------------------------------------------
+// AI Assistant — connect any of the free OpenAI-compatible providers from the
+// community catalogs (Gemini, Groq, OpenRouter, NVIDIA, Cloudflare, Kilo,
+// LLM7, OVHcloud) or a self-hosted OmniRoute. Keys are validated with a live
+// call before the config goes live, and stored server-side only (masked on
+// read). Powers smart replies, translate, summarize and draft in the chat.
+// ---------------------------------------------------------------------------
+
+type AiPreset = {
+  id: string;
+  label: string;
+  model: string;
+  keyless: boolean;
+  signup: string;
+  note: string;
+};
+
+type AiConfig = {
+  configured: boolean;
+  enabled: boolean;
+  preset: string | null;
+  baseUrl: string | null;
+  model: string | null;
+  apiKeyMasked: string | null;
+  keyless: boolean;
+  validatedAt: number | null;
+  updatedAt: number | null;
+};
+
+function AiAssistantTab() {
+  const config = useQuery(api.aiProviderData.getConfig) as AiConfig | null | undefined;
+  const listPresets = useAction(api.aiProvider.listPresets);
+  const save = useAction(api.aiProvider.saveAndValidate);
+  const sendTest = useAction(api.aiProvider.sendTestMessage);
+  const setEnabled = useMutation(api.aiProviderData.setEnabled);
+  const clearCfg = useMutation(api.aiProviderData.clearConfig);
+
+  const [presets, setPresets] = useState<AiPreset[] | null>(null);
+  const [presetId, setPresetId] = useState("gemini");
+  const [apiKey, setApiKey] = useState("");
+  const [customBaseUrl, setCustomBaseUrl] = useState("");
+  const [customModel, setCustomModel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [msgOk, setMsgOk] = useState(false);
+  const [testPrompt, setTestPrompt] = useState("");
+  const [testReply, setTestReply] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listPresets({})
+      .then((p) => {
+        if (!cancelled) setPresets(p as AiPreset[]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const preset = presets?.find((p) => p.id === presetId) ?? null;
+  const live = !!(config?.configured && config.enabled && config.validatedAt !== null);
+
+  const handleSave = async (enableNow: boolean) => {
+    if (!preset || busy) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = (await save({
+        preset: preset.id,
+        apiKey: preset.keyless ? "" : apiKey,
+        baseUrl: preset.id === "custom" ? customBaseUrl : undefined,
+        model: preset.id === "custom" ? customModel : undefined,
+        enableNow,
+      })) as { validated: boolean; enabled: boolean; detail: string };
+      setMsgOk(res.validated);
+      setMsg(res.detail);
+      if (res.validated) setApiKey("");
+    } catch (e) {
+      setMsgOk(false);
+      setMsg(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleToggle = async (on: boolean) => {
+    try {
+      await setEnabled({ enabled: on });
+    } catch (e) {
+      setMsgOk(false);
+      setMsg(e instanceof Error ? e.message : "Could not change AI mode.");
+    }
+  };
+
+  const handleTest = async () => {
+    setTestReply(null);
+    try {
+      const res = (await sendTest({ prompt: testPrompt || undefined })) as { text: string };
+      setTestReply(res.text);
+    } catch (e) {
+      setTestReply(`⚠ ${e instanceof Error ? e.message : "Test failed"}`);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm font-medium">
+          <Sparkles className="size-4 text-muted-foreground" /> AI Assistant
+        </div>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+            live
+              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+              : config?.configured
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+                : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {live ? "LIVE" : config?.configured ? "PAUSED" : "NOT SET UP"}
+        </span>
+      </div>
+
+      {config?.configured && (
+        <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
+          <div className="min-w-0 text-xs">
+            <p className="truncate font-medium">
+              {presets?.find((p) => p.id === config.preset)?.label ?? config.preset}
+            </p>
+            <p className="truncate text-muted-foreground">
+              {config.model}
+              {config.keyless
+                ? " · keyless"
+                : config.apiKeyMasked
+                  ? ` · ${config.apiKeyMasked}`
+                  : ""}
+              {config.validatedAt ? ` · validated ${timeAgo(config.validatedAt)}` : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={config.enabled}
+              onCheckedChange={handleToggle}
+              disabled={!config.validatedAt}
+              aria-label="Toggle AI features"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (confirm("Remove the saved AI provider config and key?")) {
+                  void clearCfg({});
+                  setMsg(null);
+                }
+              }}
+              aria-label="Remove AI provider config"
+            >
+              <Trash2 className="size-4 text-muted-foreground" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        <Label className="text-xs">Provider (all permanent free tiers)</Label>
+        <Select value={presetId} onValueChange={setPresetId}>
+          <SelectTrigger size="sm">
+            <SelectValue placeholder="Choose a provider" />
+          </SelectTrigger>
+          <SelectContent>
+            {(presets ?? []).map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {preset && <p className="text-xs text-muted-foreground">{preset.note}</p>}
+      </div>
+
+      {preset && preset.id === "custom" && (
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs">Base URL (OpenAI-compatible)</Label>
+          <Input
+            value={customBaseUrl}
+            onChange={(e) => setCustomBaseUrl(e.target.value)}
+            placeholder="http://localhost:20128/v1"
+            className="h-8 text-xs"
+          />
+          <Label className="text-xs">Model</Label>
+          <Input
+            value={customModel}
+            onChange={(e) => setCustomModel(e.target.value)}
+            placeholder="auto"
+            className="h-8 text-xs"
+          />
+        </div>
+      )}
+
+      {preset && !preset.keyless && (
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs">API key</Label>
+          <Input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={config?.apiKeyMasked ?? "Paste your key"}
+            className="h-8 font-mono text-xs"
+          />
+          {preset.signup && (
+            <a
+              href={preset.signup}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-muted-foreground underline hover:text-foreground"
+            >
+              Get a free key — no credit card
+            </a>
+          )}
+        </div>
+      )}
+
+      {preset?.keyless && (
+        <p className="rounded-lg border border-border/60 bg-muted/40 p-2 text-xs text-muted-foreground">
+          This provider needs no API key — just save and go live.
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => void handleSave(false)} disabled={busy || !preset}>
+          {busy ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
+          Save &amp; validate
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void handleSave(true)}
+          disabled={busy || !preset}
+        >
+          <BadgeCheck className="size-4" />
+          Save &amp; go live
+        </Button>
+      </div>
+
+      {msg && (
+        <p
+          className={`text-xs ${msgOk ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}
+        >
+          {msg}
+        </p>
+      )}
+
+      {live && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+          <p className="text-xs font-medium">Test the connection</p>
+          <div className="flex gap-2">
+            <Input
+              value={testPrompt}
+              onChange={(e) => setTestPrompt(e.target.value)}
+              placeholder="Ask anything…"
+              className="h-8 text-xs"
+            />
+            <Button size="sm" variant="outline" onClick={() => void handleTest()}>
+              <Send className="size-3.5" />
+            </Button>
+          </div>
+          {testReply && <p className="text-xs text-muted-foreground">{testReply}</p>}
+        </div>
+      )}
+
+      <details className="rounded-lg border border-border/60 p-3">
+        <summary className="cursor-pointer text-sm font-medium">What AI can do in chats</summary>
+        <ul className="mt-2 flex list-disc flex-col gap-1 pl-4 text-xs leading-5 text-muted-foreground">
+          <li>
+            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+              <Wand2 className="size-3" /> Smart replies
+            </span>{" "}
+            — three suggested responses on the latest message.
+          </li>
+          <li>
+            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+              <Languages className="size-3" /> Translate
+            </span>{" "}
+            — any message into your language, one tap.
+          </li>
+          <li>
+            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+              <ScrollText className="size-3" /> Summarize
+            </span>{" "}
+            — catch up on a long conversation instantly.
+          </li>
+          <li>
+            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+              <Sparkles className="size-3" /> Draft help
+            </span>{" "}
+            — describe what you want to say, get a ready message.
+          </li>
+        </ul>
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">
+          Privacy: only the specific text you act on is sent to the provider you choose. Message
+          content stays end-to-end encrypted between humans — the provider never sees your keys or
+          other conversations.
+        </p>
+      
+        <p className="mt-2 rounded-md bg-muted/40 p-2 text-xs leading-5 text-muted-foreground">
+          <span className="inline-flex items-center gap-1 font-medium text-foreground">
+            <RefreshCcw className="size-3" /> Auto-fallback (OmniRoute-style)
+          </span>{" "}
+          — if your provider is rate-limited or its quota runs out, GhostChat automatically retries
+          the same request through the free keyless providers (Kilo Code → OVHcloud), so AI features
+          keep working instead of failing. The reply tells you which provider served it.
+        </p>
+</details>
     </div>
   );
 }

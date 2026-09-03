@@ -108,7 +108,7 @@ export const sendTestSms = action({
     const body = new URLSearchParams({
       To: to.trim(),
       From: row.senderPhoneNumber,
-      Body: "GhostWeb: Live SMS delivery is working. 🔒",
+      Body: "GhostChat: Live SMS delivery is working. 🔒",
     });
     const res = await fetch(
       `https://api.twilio.com/2010-04-01/Accounts/${row.accountSid}/Messages.json`,

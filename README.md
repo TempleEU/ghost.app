@@ -1,143 +1,89 @@
-# Ghost.app
+# GhostChat.app
 
-> **Private by design. Secure by default.**
+> **GitHub description:** 🔒 GhostChat — Encrypted Chat System. Powered by No Location. Built with React, TypeScript, Tailwind and Convex.
 
-**Ghost.app** is a privacy-first encrypted messaging application for the web, designed around client-side cryptography, minimal server knowledge and user-controlled identity.
+**GhostChat** is a privacy-first encrypted messaging web app. Every message is sealed
+on your device with **AES-256-GCM**, keys are derived on-device through **ECDH P-256**,
+and the server only ever relays ciphertext and wrapped keys — it cannot read what you
+send. Your identity is a **ghost handle** and an on-device keypair: no phone number,
+no email required for the chat layer.
 
-**Project:** https://github.com/TempleEU/ghost.app
+## ✨ Features
 
-## Platform status
+### Secure messaging
+- 🔐 **End-to-end encryption** — AES-256-GCM with ECDH P-256 key agreement, sealed on-device
+- 🔑 **Wrapped conversation keys** — each conversation key is sealed separately per member; the server never sees raw keys
+- 💬 **Real-time delivery** — reactive subscriptions push messages instantly, no polling
+- ⏳ **Disappearing messages** — per-conversation timer (Off / 1h / 24h / 7d), filtered server-side
+- ↩️ **Replies & reactions** — quote any message; react with emoji, tally visible to everyone
+- 👥 **Group-ready conversations** — try-each-member key unwrap supports DMs and groups
 
-| Platform | Status |
-|---|---|
-| Web / PWA | **Available** (installable on Android & iOS home screens) |
-| Android | **Native app** — Capacitor project in `android/` |
-| iOS | **Native app** — Capacitor project in `ios/` |
-| macOS | Installable as a PWA today; native packaging next |
-| Windows | Installable as a PWA today; native packaging next |
-| Linux | Installable as a PWA today; native packaging next |
+### Privacy & safety
+- 🚫 **Blocking & reporting** — block any handle (their conversations are hidden) and report abuse
+- 🛡️ **Verify keys** — compare per-contact key fingerprints out-of-band to detect MITM
+- 🔔 **Privacy-focused notifications** — only when the tab is hidden, and the body never contains plaintext
+- 📵 **Secure storage toggle** — choose whether encrypted history is backed up to the cloud or stays on-device
 
-Ghost.app ships as a web app that is wrapped into native Android and iOS applications with **Capacitor** — one shared codebase (Vite · React · Convex) for every outlet.
+### Security alerts & devices
+- 📱 **Device log** — see every device logged into your encrypted chats, keyed by fingerprint
+- 🚪 **Remote logout** — revoke unfamiliar devices from Settings
 
-## Highlights
+### GhostVPN Service
+- 🌐 **VPN settings** — on/off tunnel toggle with fastest-server auto-selection
+- 🌍 **Server browser** — US, Europe, South America and Asia-Pacific endpoints
+- 🔌 **Private VPN API** — point GhostVPN at your own WireGuard/OpenVPN manager
 
-- End-to-end encrypted conversations
-- AES-256-GCM message encryption
-- ECDH P-256 key agreement
-- Per-conversation key wrapping
-- Real-time message delivery
-- Disappearing messages
-- Replies and reactions
-- Group-ready conversations
-- Key fingerprint verification
-- Blocking and reporting
-- Privacy-focused notifications
-- Device/session visibility and remote logout
-- Optional encrypted storage controls
-- GhostVPN service integration
-- Profile and avatar support
-- Dark mode
+### Settings & profile
+- 🎨 **Profile with attachable avatar** — display name + 96×96 avatar, stored client-resized
+- 🌓 **Dark mode** — on/off/auto, follows your system preference by default
 
-## Security model
+## 🧱 Tech stack
 
-Identity keys are generated on the client. Conversation keys are wrapped for individual members, while messages are encrypted before they leave the client.
+| Layer      | Tech                                      |
+| ---------- | ----------------------------------------- |
+| Frontend   | Vite · React 19 · TypeScript · Tailwind v4 |
+| UI         | shadcn/ui · Lucide icons · Framer Motion   |
+| Backend    | Convex (queries, mutations, reactive subs) |
+| Auth       | Convex Auth (anonymous — free & accountless) |
+| Crypto     | WebCrypto (ECDH P-256, AES-256-GCM, PBKDF2) |
 
-The project uses WebCrypto for its cryptographic primitives. Security-sensitive functionality should rely on established platform cryptography and reviewed protocols rather than custom cryptographic algorithms.
-
-> **Important:** a user's encryption passphrase is intentionally unrecoverable. Losing it can make locally protected messages inaccessible.
-
-## Technology
-
-| Layer | Technology |
-|---|---|
-| Frontend | Vite · React · TypeScript · Tailwind CSS |
-| UI | shadcn/ui · Lucide · Framer Motion |
-| Backend | Convex |
-| Authentication | Convex Auth |
-| Cryptography | WebCrypto · ECDH P-256 · AES-256-GCM · PBKDF2 |
-| Package manager | Bun |
-
-## Development
+## 🚀 Getting started
 
 ```bash
 bun install
-bun dev
+bun dev            # Vite dev server + Convex dev
 ```
 
-Useful verification commands:
+## 🔐 How the encryption works
 
-```bash
-bunx tsc -b --noEmit
-bunx convex dev --once
+1. **Identity** — on first run the app generates an ECDH P-256 keypair. The private key
+   is wrapped with PBKDF2 (310,000 iterations) from your passphrase and stored only in
+   your browser. The server receives the public key and your handle — nothing else.
+2. **Conversations** — the creator generates a random 256-bit conversation key and wraps
+   it once per member (ECDH-derived KEK). Members unwrap it with their own private key.
+3. **Messages** — every message is sealed with AES-256-GCM using the conversation key.
+   The server stores ciphertext, IVs and wrapped keys only.
+
+> ⚠️ Your passphrase is unrecoverable. If you lose it, your messages cannot be
+> decrypted on that device — there is no backdoor by design.
+
+## 🗂️ Project structure
+
 ```
-
-## Mobile apps (Android & iOS)
-
-The native projects live in `android/` and `ios/` and are generated from the web build with Capacitor:
-
-```bash
-bun run build       # build the web app into dist/
-bun run cap:sync    # copy dist/ into the native projects
-bun run cap:android # open the project in Android Studio -> Run on device/emulator
-bun run cap:ios     # open the project in Xcode (macOS only) -> Run
-```
-
-Regenerate the app icon / PWA icon set from `public/logo.svg`:
-
-```bash
-bun run icons
-```
-
-### First-time native setup
-
-- **Android**: install [Android Studio](https://developer.android.com/studio) (SDK + a device/emulator), then run `bun run cap:android`.
-- **iOS**: requires macOS + Xcode. The bundle ID is `app.ghost.chat` (change it in `capacitor.config.ts` before store submission).
-- **Push notifications**: `@capacitor/push-notifications` is wired in `src/hooks/use-push-notifications.ts` — the native app asks permission, registers, and opens Chat on notification tap. Real delivery needs Firebase Cloud Messaging (Android) and APNs (iOS) config; without it the app registers cleanly but no remote push arrives. The web app keeps using the in-app Notification API.
-
-### Enabling real push delivery
-
-The code and native projects are already configured — only the Firebase/Apple side needs your accounts:
-
-- **Android (FCM)** — the Gradle projects already apply `com.google.gms.google-services` (conditionally, so builds still pass without the file). Go to the [Firebase console](https://console.firebase.google.com) → *Add app* → *Android* with package name `app.ghost.chat`, download `google-services.json`, and drop it into `android/app/`. That's it — the app already requests `POST_NOTIFICATIONS` and registers via FCM.
-- **iOS (APNs)** — the Xcode project now has the **Push Notifications capability** (`App.entitlements` with `aps-environment`, wired into both build configs). In Xcode: enable the *Push Notifications* capability if prompted, then in the [Apple Developer portal](https://developer.apple.com/account) create an **APNs Auth Key** (or certificate) and upload it to the Firebase project's *Cloud Messaging* tab. (The Capacitor plugin registers with APNs directly, so iOS tokens only receive FCM-delivered pushes once the Firebase iOS SDK is wired in — Android is fully end-to-end.)
-- **Server credentials** — paste the Firebase **service account JSON** (`Firebase console → Project settings → Service accounts → Generate new private key`) into the `FIREBASE_SERVICE_ACCOUNT` env var (Keys tab). The Convex action in `src/convex/pushSender.ts` uses it to send via FCM HTTP v1.
-- **Send a test** — in the native app: *Settings → Apps* has a **Send test push** button that delivers to every device registered to your account (tokens are stored via `src/convex/push.ts` when the app registers). Or use the Firebase console's *Cloud Messaging → Send test message* with the device token.
-- **On-device storage**: `@capacitor/preferences` backs `src/lib/storage.ts`, so wrapped encryption keys and app settings persist in durable native storage on Android/iOS instead of webview localStorage. Web keeps using localStorage.
-
-### Installable web app (PWA)
-
-`public/manifest.webmanifest` plus the generated PNG icons make the site installable — on Android via Chrome (*Add to Home screen*) and on iOS via Safari (*Share → Add to Home Screen*). Regenerate icons with `bun run icons`.
-
-## Project structure
-
-```text
 src/
-├── convex/       # Backend schema, chat, settings and auth
-├── pages/        # Landing, authentication, chat and dashboard
-├── components/   # Application UI and settings
-├── lib/          # Client-side cryptography and utilities
-└── hooks/        # Application hooks
+├── convex/            # Convex backend (schema, chat, settings, auth)
+├── pages/             # Landing, Auth, Chat, Dashboard, NotFound
+├── components/        # SettingsDialog (profile/storage/security/keys/VPN) + ui/
+├── lib/               # crypto.ts — E2E identity, key wrapping, message crypto
+└── hooks/             # use-auth, use-mobile
 ```
 
-## Ghost ecosystem
+## ⚙️ Development notes
 
-Ghost.app is part of the broader Ghost privacy ecosystem. The Android project is maintained separately as **Ghostly Android**, while this repository's Capacitor setup covers Android, iOS and PWA installs from the same codebase.
-
-## Contributing
-
-Security reviews, bug reports, usability improvements and thoughtful pull requests are welcome.
-
-**Repository:** https://github.com/TempleEU/ghost.app
-
-## License
-
-See the repository's license and legal files for the applicable terms.
-
-## Disclaimer
-
-Ghost.app is an independently developed project. Users should independently evaluate the software, implementation and security model before relying on it for sensitive communications.
-
----
-
-**Ghost.app**  
-Private communication. Minimal exposure. Open development.
+- Use **bun** as the package manager.
+- All Convex functions live in `src/convex/`; push them with `bunx convex dev`.
+- Auth is pre-wired with **email OTP** and **anonymous** providers via Convex Auth
+  (`src/convex/auth.ts`). Environment variables `CONVEX_DEPLOYMENT` and
+  `VITE_CONVEX_URL` are already configured on the client; the backend has its own
+  auth keys (JWKS, JWT_PRIVATE_KEY, SITE_URL).
+- Frontend typecheck: `bunx tsc -b --noEmit` · Backend push: `bunx convex dev --once`

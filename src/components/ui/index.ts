@@ -60,7 +60,6 @@ export { Menubar, MenubarMenu, MenubarTrigger, MenubarContent, MenubarItem, Menu
 // Form Components
 export { Select, SelectGroup, SelectValue, SelectTrigger, SelectContent, SelectLabel, SelectItem, SelectSeparator, SelectScrollUpButton, SelectScrollDownButton } from "./select"; // ~6KB - Dropdown select
 export { Form, FormItem, FormLabel, FormControl, FormDescription, FormMessage, FormField } from "./form"; // ~4KB - Form wrapper with validation
-export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from "./input-otp"; // ~5KB - OTP input
 
 // Content Display
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./accordion"; // ~5KB - Collapsible sections

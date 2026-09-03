@@ -1,15 +1,12 @@
 /**
- * GhostWeb client-side E2E encryption (v1).
+ * GhostChat client-side E2E encryption (v1).
  *
  * Protocol: ECDH P-256 key agreement + HKDF-SHA256 -> AES-256-GCM.
  * Every user has a P-256 keypair. The private key is wrapped with a key
- * derived from a passphrase (PBKDF2) and stored on-device (localStorage
- * on web, Capacitor Preferences in the native apps).
+ * derived from a passphrase (PBKDF2) and stored in localStorage.
  * Conversation keys are 256-bit random values, wrapped per-member using
  * an ECDH-derived KEK. The server never sees plaintext or unwrapped keys.
  */
-
-import { storageGet, storageSet } from "./storage";
 
 const EC = "P-256";
 const AES = "AES-GCM";
@@ -143,6 +140,19 @@ export async function saveIdentity(
   passphrase: string,
   identity: { privateKeyJwk: string },
 ): Promise<void> {
+  if (!passphrase) {
+    // Guest mode: no passphrase → store the key plainly in this browser only.
+    // Auto-unlocks on return; as secure as the device itself.
+    localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({
+        plain: identity.privateKeyJwk,
+        protected: false,
+        check: "ghostchat-v1",
+      }),
+    );
+    return;
+  }
   const salt = randomBytes(16);
   const kek = await passphraseKey(passphrase, salt);
   const iv = randomBytes(12);
@@ -151,27 +161,36 @@ export async function saveIdentity(
     kek,
     new TextEncoder().encode(identity.privateKeyJwk),
   );
-  await storageSet(
+  localStorage.setItem(
     STORE_KEY,
     JSON.stringify({
       salt: b64(salt),
       iv: b64(iv),
       wrapped: b64(wrapped),
+      protected: true,
       check: "ghostchat-v1",
     }),
   );
 }
 
-/** Returns the unwrapped private key JWK, or null if the passphrase is wrong. */
+/**
+ * Returns the unwrapped private key JWK, or null if the passphrase is wrong.
+ * Guest identities (stored without a passphrase) unlock regardless of the
+ * supplied passphrase.
+ */
 export async function loadIdentity(passphrase: string): Promise<string | null> {
-  const raw = await storageGet(STORE_KEY);
+  const raw = localStorage.getItem(STORE_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as {
-      salt: string;
-      iv: string;
-      wrapped: string;
+      salt?: string;
+      iv?: string;
+      wrapped?: string;
+      plain?: string;
+      protected?: boolean;
     };
+    if (parsed.plain) return parsed.plain;
+    if (!parsed.salt || !parsed.iv || !parsed.wrapped) return null;
     const kek = await passphraseKey(passphrase, unb64(parsed.salt));
     const plain = await crypto.subtle.decrypt(
       { name: AES, iv: unb64(parsed.iv) },
@@ -184,8 +203,20 @@ export async function loadIdentity(passphrase: string): Promise<string | null> {
   }
 }
 
-export async function hasStoredIdentity(): Promise<boolean> {
-  return (await storageGet(STORE_KEY)) !== null;
+export function hasStoredIdentity(): boolean {
+  return localStorage.getItem(STORE_KEY) !== null;
+}
+
+/** True when the stored identity has no passphrase (guest mode). */
+export function isIdentityUnprotected(): boolean {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (!raw) return false;
+  try {
+    const parsed = JSON.parse(raw) as { plain?: string; protected?: boolean };
+    return typeof parsed.plain === "string" || parsed.protected === false;
+  } catch {
+    return false;
+  }
 }
 
 // ----------------------------------------------------------- key verification
