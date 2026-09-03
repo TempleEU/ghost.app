@@ -93,6 +93,14 @@ bun run icons
 - **Android**: install [Android Studio](https://developer.android.com/studio) (SDK + a device/emulator), then run `bun run cap:android`.
 - **iOS**: requires macOS + Xcode. The bundle ID is `app.ghost.chat` (change it in `capacitor.config.ts` before store submission).
 - **Push notifications**: `@capacitor/push-notifications` is wired in `src/hooks/use-push-notifications.ts` — the native app asks permission, registers, and opens Chat on notification tap. Real delivery needs Firebase Cloud Messaging (Android) and APNs (iOS) config; without it the app registers cleanly but no remote push arrives. The web app keeps using the in-app Notification API.
+
+### Enabling real push delivery
+
+The code and native projects are already configured — only the Firebase/Apple side needs your accounts:
+
+- **Android (FCM)** — the Gradle projects already apply `com.google.gms.google-services` (conditionally, so builds still pass without the file). Go to the [Firebase console](https://console.firebase.google.com) → *Add app* → *Android* with package name `app.ghost.chat`, download `google-services.json`, and drop it into `android/app/`. That's it — the app already requests `POST_NOTIFICATIONS` and registers via FCM.
+- **iOS (APNs)** — the Xcode project now has the **Push Notifications capability** (`App.entitlements` with `aps-environment`, wired into both build configs). In Xcode: enable the *Push Notifications* capability if prompted, then in the [Apple Developer portal](https://developer.apple.com/account) create an **APNs Auth Key** (or certificate) and upload it to the Firebase project's *Cloud Messaging* tab.
+- **Send a test** — after both sides are set, use the Firebase console's *Cloud Messaging → Send test message* with the device token logged by `use-push-notifications.ts`.
 - **On-device storage**: `@capacitor/preferences` backs `src/lib/storage.ts`, so wrapped encryption keys and app settings persist in durable native storage on Android/iOS instead of webview localStorage. Web keeps using localStorage.
 
 ### Installable web app (PWA)
