@@ -14,7 +14,7 @@ const features = [
 export default function Landing() {
   const { isLoading, isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const ctaLabel = isLoading ? "Loading…" : isAuthenticated ? "Open GhostChat" : "Start chatting";
+  const ctaLabel = isLoading ? "Loading…" : isAuthenticated ? "Open GhostWeb" : "Start chatting";
   const ctaTarget = isAuthenticated ? "/chat" : "/auth?returnTo=%2Fchat";
 
   return (

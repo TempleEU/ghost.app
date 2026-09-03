@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
@@ -30,6 +31,12 @@ class RootErrorBoundary extends React.Component<{ children: React.ReactNode }, {
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
+function PlatformBridge() {
+  // Registers native push notifications on Android/iOS (no-op on web).
+  usePushNotifications();
+  return null;
+}
+
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => { window.parent.postMessage({ type: "iframe-route-change", path: location.pathname }, "*"); }, [location.pathname]);
@@ -52,6 +59,7 @@ createRoot(document.getElementById("root")!).render(
       <ConvexAuthProvider client={convex}>
         <BrowserRouter>
           <RouteSyncer />
+          <PlatformBridge />
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/" element={<Landing />} />

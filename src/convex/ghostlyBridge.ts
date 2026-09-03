@@ -6,7 +6,7 @@ import { internal } from "./_generated/api";
 
 // ---------------------------------------------------------------------------
 // Ghostly bridge — HTTP API for the native companion app (Ghostly.android or
-// any GhostChat client). Endpoints:
+// any GhostWeb client). Endpoints:
 //
 //   POST /api/ghostly/claim   { pairingCode }            → { deviceKey }
 //   GET  /api/ghostly/sync    ?key=<deviceKey>&since=ts  → VPN keys + settings snapshot

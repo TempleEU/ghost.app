@@ -284,6 +284,17 @@ function UnlockScreen({
   const [passphrase, setPassphrase] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasLocalKey, setHasLocalKey] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    hasStoredIdentity().then((has) => {
+      if (active) setHasLocalKey(has);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleUnlock = async () => {
     setBusy(true);
@@ -308,17 +319,17 @@ function UnlockScreen({
           <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full border border-foreground/15">
             <Lock className="size-5 text-foreground/70" />
           </div>
-          <CardTitle className="text-xl">Unlock GhostChat</CardTitle>
+          <CardTitle className="text-xl">Unlock GhostWeb</CardTitle>
           <CardDescription>
             Welcome back, {identity.handle}. Enter your passphrase to decrypt
             your private key for this session.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {!hasStoredIdentity() && (
+          {hasLocalKey === false && (
             <p className="text-sm text-destructive">
-              No local key found in this browser. GhostChat keys are
-              device-bound — sign in on the browser where you created your
+              No local key found on this device. GhostWeb keys are
+              device-bound — sign in on the device where you created your
               identity.
             </p>
           )}
@@ -440,7 +451,7 @@ function ChatWorkspace({
               <Ghost className="size-3.5 text-foreground/70" />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-medium leading-tight">GhostChat</span>
+              <span className="text-sm font-medium leading-tight">GhostWeb</span>
               <span className="text-xs text-muted-foreground">{me.handle}</span>
             </div>
           </div>
@@ -605,7 +616,7 @@ function ChatView({
       Notification.permission === "granted"
     ) {
       const n = count - prev;
-      new Notification("GhostChat", {
+      new Notification("GhostWeb", {
         body: `${n} new encrypted message${n > 1 ? "s" : ""}`,
         tag: `ghostchat-${conv._id}`,
       });

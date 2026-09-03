@@ -7,7 +7,7 @@ import { internal } from "./_generated/api";
 // SMS Gateway — receive SMS from phones running react-native-sms-gateway
 // (or any app that POSTs { msg, timestamp, phoneNumber, sender }).
 //
-// The gateway app is native Android (iOS gives no SMS access); GhostChat is
+// The gateway app is native Android (iOS gives no SMS access); GhostWeb is
 // the receiver: it authenticates each device by API key, stores the SMS,
 // and shows them in the SMS Gateway inbox.
 // ---------------------------------------------------------------------------

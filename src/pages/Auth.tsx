@@ -354,7 +354,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
 
           <div className="py-4 px-6 text-xs text-center text-muted-foreground bg-muted border-t rounded-b-lg">
             <ShieldCheck className="inline-block mr-1 h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
-            Secured by <span className="font-medium text-foreground">GhostChat</span>{" "}
+            Secured by <span className="font-medium text-foreground">GhostWeb</span>{" "}
             privacy enhanced &amp; integrated <span className="whitespace-nowrap">E2E Protocol</span>
           </div>
         </Card>

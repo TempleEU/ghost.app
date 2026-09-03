@@ -7,7 +7,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // - iOS:          bun run cap:ios        (opens Xcode, macOS only)
 const config: CapacitorConfig = {
   appId: "app.ghost.chat",
-  appName: "GhostChat",
+  appName: "GhostWeb",
   webDir: "dist",
   androidScheme: "https",
   backgroundColor: "#232323",

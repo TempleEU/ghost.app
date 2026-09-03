@@ -320,7 +320,7 @@ function DisplayTab() {
       <div className="rounded-lg border border-border/60 p-3">
         <p className="text-sm font-medium">Appearance</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Enable Dark Mode in GhostChat, or follow your system setting.
+          Enable Dark Mode in GhostWeb, or follow your system setting.
         </p>
         <div className="mt-3 grid grid-cols-3 gap-2">
           {themes.map(({ value, label, icon: Icon }) => (
@@ -349,7 +349,7 @@ function DisplayTab() {
         <div>
           <p className="text-sm font-medium">App Mode</p>
           <p className="text-xs leading-5 text-muted-foreground">
-            When on, GhostChat runs in a compact phone-style app frame. When
+            When on, GhostWeb runs in a compact phone-style app frame. When
             off, you get the full desktop layout.
           </p>
         </div>
@@ -737,7 +737,7 @@ function GhostVpnTab() {
         <div>
           <p className="text-sm font-medium">GhostVPN Service</p>
           <p className="text-xs leading-5 text-muted-foreground">
-            Route GhostChat traffic through an encrypted tunnel. No time,
+            Route GhostWeb traffic through an encrypted tunnel. No time,
             traffic or bandwidth limits.
           </p>
         </div>
@@ -815,7 +815,7 @@ function GhostVpnTab() {
           <div>
             <p className="text-sm font-medium">Auto-connect</p>
             <p className="text-xs leading-5 text-muted-foreground">
-              Connect automatically when GhostChat starts.
+              Connect automatically when GhostWeb starts.
             </p>
           </div>
           <Switch
@@ -911,7 +911,7 @@ function DeploymentGuide() {
         </li>
         <li>
           Install the Outline client on the device that will tunnel
-          (getoutline.org/get-started) — GhostChat creates the keys, the
+          (getoutline.org/get-started) — GhostWeb creates the keys, the
           client opens the tunnel.
         </li>
       </ol>
@@ -922,7 +922,7 @@ function DeploymentGuide() {
 // ---------------------------------------------------------------------------
 // GhostVPN Access Keys — import, validate, store and launch real Outline /
 // Shadowsocks / VLESS / VMess keys. The OS client (Outline, v2rayNG,
-// v2rayN, Shadowrocket) opens the tunnel; GhostChat manages the keys.
+// v2rayN, Shadowrocket) opens the tunnel; GhostWeb manages the keys.
 // ---------------------------------------------------------------------------
 
 type VpnKeyRow = {
@@ -1135,7 +1135,7 @@ function VpnAccessKeys() {
 
 // ---------------------------------------------------------------------------
 // GhostVPN Server Hub — connect your own Outline server, then create, list,
-// rename and delete real access keys straight from GhostChat. Keys land in
+// rename and delete real access keys straight from GhostWeb. Keys land in
 // the Access Keys list and tunnel via the Outline client.
 // ---------------------------------------------------------------------------
 
@@ -1219,7 +1219,7 @@ function ServerHubTab() {
       await createKey({
         apiUrl: server.apiUrl,
         certSha256: server.certSha256,
-        name: newKeyName.trim() || "GhostChat key",
+        name: newKeyName.trim() || "GhostWeb key",
       });
       setNewKeyName("");
       setServerKeys(await listKeys({ apiUrl: server.apiUrl, certSha256: server.certSha256 }));
@@ -1269,7 +1269,7 @@ function ServerHubTab() {
     <div className="flex flex-col gap-3 py-2">
       <p className="text-xs leading-5 text-muted-foreground">
         Connect your own Outline (Shadowsocks) server — deployed via
-        vpnserverhub.com or self-hosted. GhostChat becomes your management
+        vpnserverhub.com or self-hosted. GhostWeb becomes your management
         hub: create, rename and revoke real VPN access keys. Keys tunnel via
         the Outline client.
       </p>
@@ -1432,7 +1432,7 @@ function ServerHubTab() {
 // ---------------------------------------------------------------------------
 // SMS Gateway — receive SMS from Android phones running
 // react-native-sms-gateway (or any app POSTing the same JSON payload).
-// Each device gets an API key; the phone POSTs to the GhostChat webhook.
+// Each device gets an API key; the phone POSTs to the GhostWeb webhook.
 // ---------------------------------------------------------------------------
 
 type SmsDevice = {
@@ -1501,7 +1501,7 @@ function SmsGatewayTab() {
         >
           react-native-sms-gateway
         </a>
-        . The phone forwards incoming SMS to GhostChat over HTTPS — read your
+        . The phone forwards incoming SMS to GhostWeb over HTTPS — read your
         OTPs and texts from anywhere, on any device. iOS is not supported
         (Apple exposes no SMS API).
       </p>
@@ -1656,7 +1656,7 @@ function SmsGatewayTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Phone tab — GhostChat phone verification (Twilio Verify)
+// Phone tab — GhostWeb phone verification (Twilio Verify)
 // ---------------------------------------------------------------------------
 
 type PhoneStatus = { phoneE164: string | null; phoneVerifiedAt: number | null };
@@ -1822,7 +1822,7 @@ function PhoneTab() {
       <div className="rounded-lg border border-border/60 p-3">
         <p className="text-sm font-medium">Need a second number?</p>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          GhostChat verifies your existing number — it does not mint new ones.
+          GhostWeb verifies your existing number — it does not mint new ones.
           For a free personal second number, these are the legitimate options:
         </p>
         <ul className="mt-2 flex list-disc flex-col gap-1 pl-4 text-xs leading-5 text-muted-foreground">
@@ -1840,7 +1840,7 @@ function PhoneTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Apps > Permissions — per-feature access toggles for GhostChat itself.
+// Apps > Permissions — per-feature access toggles for GhostWeb itself.
 // These control what the app can use on THIS device (camera, mic, location,
 // contacts). Browser permissions are requested lazily only when a toggle is
 // on; toggles persist locally and gate the relevant feature code paths.
@@ -1913,12 +1913,12 @@ function AppsPermissionsTab() {
   return (
     <div className="flex flex-col gap-3 py-2">
       <p className="text-xs leading-5 text-muted-foreground">
-        GhostChat requests access to your device's features only when a feature
+        GhostWeb requests access to your device's features only when a feature
         needs it. Toggle access on or off here — turning something off makes
         the app skip it entirely (no background collection).
       </p>
       <div className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
-        <p className="text-sm font-medium">GhostChat · device access</p>
+        <p className="text-sm font-medium">GhostWeb · device access</p>
         {APP_PERMISSIONS.map((p) => {
           const Icon = p.icon;
           return (
@@ -1952,7 +1952,7 @@ function AppsPermissionsTab() {
 
 // ---------------------------------------------------------------------------
 // Privacy > Permission manager — cross-feature overview of everything
-// GhostChat can touch on this device, with one-click disable-all.
+// GhostWeb can touch on this device, with one-click disable-all.
 // ---------------------------------------------------------------------------
 
 function PrivacyManagerTab() {
@@ -1972,7 +1972,7 @@ function PrivacyManagerTab() {
   return (
     <div className="flex flex-col gap-3 py-2">
       <p className="text-xs leading-5 text-muted-foreground">
-        Everything GhostChat can access on this device, at a glance. Click a
+        Everything GhostWeb can access on this device, at a glance. Click a
         permission to jump to its toggle in Apps.
       </p>
 
@@ -1986,7 +1986,7 @@ function PrivacyManagerTab() {
 
         {active.length === 0 && inactive.length === APP_PERMISSIONS.length && (
           <p className="text-xs text-muted-foreground">
-            All device access is off. GhostChat works with messaging only.
+            All device access is off. GhostWeb works with messaging only.
           </p>
         )}
 

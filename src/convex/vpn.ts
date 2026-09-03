@@ -96,7 +96,7 @@ export const fetchSubscription = action({
     }
 
     const res = await fetch(parsed.toString(), {
-      headers: { "User-Agent": "GhostChat/1.0 (subscription client)" },
+      headers: { "User-Agent": "GhostWeb/1.0 (subscription client)" },
       redirect: "follow",
     });
     if (!res.ok) {

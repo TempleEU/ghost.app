@@ -92,7 +92,8 @@ bun run icons
 
 - **Android**: install [Android Studio](https://developer.android.com/studio) (SDK + a device/emulator), then run `bun run cap:android`.
 - **iOS**: requires macOS + Xcode. The bundle ID is `app.ghost.chat` (change it in `capacitor.config.ts` before store submission).
-- **Push notifications & storage**: add the relevant Capacitor plugins (e.g. `@capacitor/push-notifications`, `@capacitor/preferences`) when native features are needed; the web app keeps working unchanged.
+- **Push notifications**: `@capacitor/push-notifications` is wired in `src/hooks/use-push-notifications.ts` — the native app asks permission, registers, and opens Chat on notification tap. Real delivery needs Firebase Cloud Messaging (Android) and APNs (iOS) config; without it the app registers cleanly but no remote push arrives. The web app keeps using the in-app Notification API.
+- **On-device storage**: `@capacitor/preferences` backs `src/lib/storage.ts`, so wrapped encryption keys and app settings persist in durable native storage on Android/iOS instead of webview localStorage. Web keeps using localStorage.
 
 ### Installable web app (PWA)
 

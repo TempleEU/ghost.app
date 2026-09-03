@@ -31,7 +31,7 @@ const schema = defineSchema(
 
       role: v.optional(roleValidator), // role of the user. do not remove
 
-      // GhostChat E2E identity (v1)
+      // GhostWeb E2E identity (v1)
       handle: v.optional(v.string()), // public chat handle, e.g. ghost-7f3a9c
       publicKeyJwk: v.optional(v.string()), // ECDH P-256 public key (JSON JWK)
 
@@ -71,7 +71,7 @@ const schema = defineSchema(
       vpnServerVerified: v.optional(v.boolean()), // connection test passed
 
       // Fake GPS Location — spoofing configuration consumed by the native
-      // GhostChat companion (mock location on Android, Xcode/CoreLocation
+      // GhostWeb companion (mock location on Android, Xcode/CoreLocation
       // simulation on iOS/macOS, geolocation override on Windows browsers).
       fakeGpsEnabled: v.optional(v.boolean()),
       fakeGpsLat: v.optional(v.number()),
@@ -91,7 +91,7 @@ const schema = defineSchema(
       revoked: v.optional(v.boolean()),
     }).index("by_user", ["userId", "lastSeenAt"]),
 
-    // GhostChat v1: conversations with per-member wrapped keys (server never
+    // GhostWeb v1: conversations with per-member wrapped keys (server never
     // sees plaintext or unwrapped keys).
     conversations: defineTable({
       // Denormalized member snapshots so the client can unwrap without extra joins.
@@ -160,7 +160,7 @@ const schema = defineSchema(
     }).index("by_user", ["userId", "createdAt"]),
 
     // SMS Gateway devices — phones running an SMS-gateway app that POSTs
-    // incoming SMS to GhostChat. One API key per device.
+    // incoming SMS to GhostWeb. One API key per device.
     smsDevices: defineTable({
       userId: v.id("users"),
       label: v.string(), // e.g. "Pixel 8 — bedside phone"
@@ -215,7 +215,7 @@ const schema = defineSchema(
       updatedAt: v.number(),
     }),
 
-    // Ghostly bridge — native companion devices paired with GhostChat.
+    // Ghostly bridge — native companion devices paired with GhostWeb.
     // Device registers with pairingCode, polls/claims a deviceKey, then uses
     // the deviceKey to pull VPN keys and receive push (sync markers).
     companionDevices: defineTable({

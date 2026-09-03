@@ -1,7 +1,7 @@
 {
-  "name": "GhostChat.app",
-  "short_name": "GhostChat",
-  "description": "GhostChat — Encrypted Chat System. Powered by No Location.",
+  "name": "GhostWeb",
+  "short_name": "GhostWeb",
+  "description": "GhostWeb — Encrypted Chat System. Powered by No Location.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

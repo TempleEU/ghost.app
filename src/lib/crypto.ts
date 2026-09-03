@@ -1,12 +1,15 @@
 /**
- * GhostChat client-side E2E encryption (v1).
+ * GhostWeb client-side E2E encryption (v1).
  *
  * Protocol: ECDH P-256 key agreement + HKDF-SHA256 -> AES-256-GCM.
  * Every user has a P-256 keypair. The private key is wrapped with a key
- * derived from a passphrase (PBKDF2) and stored in localStorage.
+ * derived from a passphrase (PBKDF2) and stored on-device (localStorage
+ * on web, Capacitor Preferences in the native apps).
  * Conversation keys are 256-bit random values, wrapped per-member using
  * an ECDH-derived KEK. The server never sees plaintext or unwrapped keys.
  */
+
+import { storageGet, storageSet } from "./storage";
 
 const EC = "P-256";
 const AES = "AES-GCM";
@@ -148,7 +151,7 @@ export async function saveIdentity(
     kek,
     new TextEncoder().encode(identity.privateKeyJwk),
   );
-  localStorage.setItem(
+  await storageSet(
     STORE_KEY,
     JSON.stringify({
       salt: b64(salt),
@@ -161,7 +164,7 @@ export async function saveIdentity(
 
 /** Returns the unwrapped private key JWK, or null if the passphrase is wrong. */
 export async function loadIdentity(passphrase: string): Promise<string | null> {
-  const raw = localStorage.getItem(STORE_KEY);
+  const raw = await storageGet(STORE_KEY);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as {
@@ -181,8 +184,8 @@ export async function loadIdentity(passphrase: string): Promise<string | null> {
   }
 }
 
-export function hasStoredIdentity(): boolean {
-  return localStorage.getItem(STORE_KEY) !== null;
+export async function hasStoredIdentity(): Promise<boolean> {
+  return (await storageGet(STORE_KEY)) !== null;
 }
 
 // ----------------------------------------------------------- key verification

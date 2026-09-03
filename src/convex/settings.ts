@@ -78,7 +78,7 @@ export const setDisplaySettings = mutation({
 
 /**
  * Fake GPS Location (Menu > Settings > GhostVPN > Fake GPS Location).
- * Stores the spoofing configuration the native GhostChat companion consumes
+ * Stores the spoofing configuration the native GhostWeb companion consumes
  * via Android mock location, Xcode/CoreLocation simulation on iOS/macOS, or
  * a geolocation override on Windows browsers.
  */
