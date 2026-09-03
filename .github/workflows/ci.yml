@@ -23,6 +23,8 @@ concurrency:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
